@@ -166,6 +166,7 @@ endif(FCPP_BUILD_GL)
 ######################
 add_library(
         stb_image
+        ./external/stb_image/stb_image_write.h
         ./external/stb_image/stb_image.h
         ./external/stb_image/stb_image.cpp
 )
@@ -174,6 +175,7 @@ target_link_libraries(
         fcpp PUBLIC
         stb_image
 )
+
 if(UNIX)
     target_compile_options(stb_image PUBLIC -fPIC)
 endif(UNIX)
