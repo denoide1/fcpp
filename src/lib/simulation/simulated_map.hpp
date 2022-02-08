@@ -20,6 +20,7 @@
 
 
 
+
 /**
  * @brief Namespace containing all the objects in the FCPP library.
  */
@@ -448,8 +449,8 @@ struct simulated_map {
                                         queues[i+d[2]].push_back({{n_x, n_y}, elem.second});
                                 }
                             }
-                            queues[i].clear();
                         }
+                        queues[i].clear();
                     }
                     //end bfs
                 }
