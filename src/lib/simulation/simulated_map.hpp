@@ -9,6 +9,7 @@
 #define FCPP_SIMULATED_MAP_H_
 
 #include <cstring>
+#include <stack>
 
 #include "lib/common/traits.hpp"
 #include "lib/component/base.hpp"
@@ -261,8 +262,7 @@ struct simulated_map {
             void mark_potential_points(std::string const& path) {
 
                 constexpr static std::array<std::array<int, 2>, 8> deltas = {{{-1, 0}, {1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}}};
-                int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index = 0;
-                color pnt_color = color(RED);
+                int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index;
                 std::string real_path;
 #if _WIN32
                 real_path = std::string(".\\textures\\").append(path);
@@ -273,70 +273,50 @@ struct simulated_map {
                 unsigned char *bitmap_data = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height, &channels_per_pixel, 3);
                 if (bitmap_data == nullptr) throw std::runtime_error("Error in image loading");
 
-                unsigned char *pixelOffset = bitmap_data;
-
-                unsigned char *debug_img = (unsigned char*) malloc(bitmap_width * bitmap_height * channels_per_pixel);
-                if (debug_img == nullptr) {
-                    throw std::runtime_error("Unable to allocate memory for the debug image");
-                }
-
-                unsigned char* f_image = debug_img;
-
                 std::vector<std::vector<bool>> visited(m_bitmap.size(), std::vector<bool>(m_bitmap[0].size()));
                 std::vector<std::vector<std::pair<index_type,color>>> draw_buffers;
+                std::vector<std::pair<index_type,int>> point_values;
 
                 //prepare 2 buffers
                 draw_buffers.emplace_back();
                 draw_buffers.emplace_back();
 
                 row_index = bitmap_height - 1;
+                col_index = 0;
 
                 while (row_index >= 0) {
 
                     if(!m_bitmap[row_index][col_index]) {
 
-                        int distance = get_distance(m_closest[row_index][col_index], col_index, row_index);
-                        int sum = 0;
+                        if (col_index >= 0 && col_index < m_bitmap[0].size() && row_index >= 0 && row_index < m_bitmap.size() && !m_bitmap[row_index][col_index]) {
 
-                        bool max = true;
-                        for (std::array<int, 2> const &d: deltas) {
-                            size_t n_x = col_index + d[0];
-                            size_t n_y = row_index + d[1];
-                            if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size() && !m_bitmap[n_y][n_x]) {
-                                int n_distance = get_distance(m_closest[n_y][n_x], n_x, n_y);
-                                max &= distance >= n_distance;
-                                sum += std::max(n_distance - distance, int(0));
+                            int distance = get_distance(m_closest[row_index][col_index], col_index, row_index);
+                            bool max = true;
+                            for (std::array<int, 2> const &d: deltas) {
+                                size_t n_x = col_index + d[0];
+                                size_t n_y = row_index + d[1];
+                                if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size() && !m_bitmap[n_y][n_x]) {
+                                    int n_distance = get_distance(m_closest[n_y][n_x], n_x, n_y);
+                                    max &= distance >= n_distance;
+                                }
+                            }
+
+                            if (max) {
+                                index_type t;
+                                t[0] = col_index;
+                                t[1] = row_index;
+                                draw_buffers[0].emplace_back(t, color(RED));
+
+                                if (!visited[row_index][col_index]) {
+                                    std::cout << "STARTED" << std::endl;
+                                    index_type b = start_it_dfs(visited, row_index, col_index);
+                                    std::cout << "ENDED" << std::endl;
+                                    draw_buffers[1].emplace_back(b, color(BLUE));
+                                }
                             }
                         }
-
-                        if (sum <= 2) {
-
-                            index_type t;
-                            t[0] = col_index;
-                            t[1] = row_index;
-                            draw_buffers[0].emplace_back(t, color(RED));
-                            std::cout<<"sum: "<<sum<<std::endl;
-
-                            /*
-                            if (!visited[row_index][col_index]) {
-                                std::cout<<"STARTED"<<std::endl;
-                                index_type b = start_dfs(visited, row_index, col_index, col_index, row_index, 1);
-                                std::cout<<"ENDED"<<std::endl;
-                                draw_buffers[1].emplace_back(b, color(BLUE));
-                            }
-                             */
-
-
-                        }
-
-                        for (int j = 0; j < channels_per_pixel; j++)
-                            debug_img[j] = pixelOffset[j];
                     }
-
                     col_index++;
-                    pixelOffset += channels_per_pixel;
-                    debug_img += channels_per_pixel;
-
                     if (col_index == bitmap_width) {
                         row_index--;
                         col_index = 0;
@@ -344,16 +324,12 @@ struct simulated_map {
                 }
 
                 for (std::vector<std::pair<index_type,color>> const& p_buffer : draw_buffers) {
-
                     for (std::pair<index_type, color> t: p_buffer) {
-
-                        write_point_on_image(f_image, visited, t.first[1], t.first[0], bitmap_width, channels_per_pixel,
-                                             t.second);
-
+                        write_point_on_image(bitmap_data, visited, t.first[1], t.first[0], bitmap_width, channels_per_pixel, t.second);
                     }
                 }
 
-                stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, f_image, 100);
+                stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
 
                 stbi_image_free(bitmap_data);
 
@@ -361,50 +337,74 @@ struct simulated_map {
 
             void write_point_on_image(unsigned char* pointer, std::vector<std::vector<bool>>& visited, int row, int col, int bitmap_width, int channels, color clr) {
 
-                for (int j = 0; j < channels; j++)
-                    (pointer + (channels * ((bitmap_width - row) * bitmap_width + col)))[j] = clr.rgba[j] * 255;
-
-                visited[row][col] = true;
-
+                if(col >= 0 && col < m_bitmap[0].size() && row >= 0 && row < m_bitmap.size()) {
+                    for (int j = 0; j < channels; j++) {
+                        (pointer + (channels * ((bitmap_width - row) * bitmap_width + col)))[j] = clr.rgba[j] * 255;
+                    }
+                    visited[row][col] = true;
+                }
             }
 
             int get_distance(index_type const& closest, int x, int y) {
 
-                int deltaX = closest[0] - x;
-                int deltaY = closest[1] - y;
+                int deltaX = std::abs((int)closest[0] - x);
+                int deltaY = std::abs((int)closest[1] - y);
 
-                return std::abs(std::min(deltaX, deltaY) + (2 * std::max(deltaX, deltaY)));
+                return std::min(deltaX, deltaY) + (2 * std::max(deltaX, deltaY));
 
             }
 
-            index_type start_dfs(std::vector<std::vector<bool>>& visited, int row_index, int column_index, int x_sum, int y_sum, int count) {
+
+            index_type start_it_dfs(std::vector<std::vector<bool>>& visited, int row_index, int column_index) {
 
                 constexpr static std::array<std::array<int, 2>, 8> deltas = {{{-1, 0}, {1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}}};
 
-                visited[row_index][column_index] = true;
-                index_type type;
-                type[0] = column_index;
-                type[1] = row_index;
-                std::cout<<"x: "<<column_index<<" "<<"y: "<<row_index<<std::endl;
+                std::stack<std::pair<std::pair<size_t,size_t>,int>> stack;
+                int tollerance = 15;
+                int x_sum = 0,y_sum = 0,count = 0;
 
-                for (std::array<int,2> const& d : deltas) {
-                    size_t n_x = column_index + d[0];
-                    size_t n_y = row_index + d[1];
-                    if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size() && !m_bitmap[n_y][n_x] && !visited[n_y][n_x]) {
-                        real_t distance_n = get_distance(m_closest[n_y][n_x], n_x, n_y);
-                        bool max = true;
-                        real_t sum = 0;
-                        for (std::array<int, 2> const& d: deltas) {
-                            size_t n_x2 = n_x + d[0];
-                            size_t n_y2 = n_y + d[1];
-                            if (n_x2 >= 0 && n_x2< m_bitmap[0].size() && n_y2 >= 0 && n_y2 < m_bitmap.size() && !m_bitmap[n_y2][n_x2]) {
-                                real_t n_distance = get_distance(m_closest[n_y2][n_x2], n_x2, n_y2);
-                                max &= distance_n >= n_distance;
-                                sum += std::max(distance_n - n_distance, real_t(0));
+
+                stack.push({{column_index, row_index},tollerance});
+
+                while(!stack.empty()) {
+
+                    std::pair<std::pair<size_t,size_t>,int> p = stack.top();
+                    stack.pop();
+
+                    visited[p.first.second][p.first.first] = true;
+
+                    if (p.second == 0) continue;
+
+                    if(p.second == tollerance) {
+                        count++;
+                        x_sum += p.first.first;
+                        y_sum += p.first.second;
+                    }
+
+                    for (std::array<int, 2> const &d: deltas) {
+
+                        size_t n_x = p.first.first + d[0];
+                        size_t n_y = p.first.second + d[1];
+
+                        if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size() && !m_bitmap[n_y][n_x] && !visited[n_y][n_x]) {
+
+                            int distance_n = get_distance(m_closest[n_y][n_x], n_x, n_y);
+                            bool max = true;
+                            for (std::array<int, 2> const &d: deltas) {
+                                size_t n_x2 = n_x + d[0];
+                                size_t n_y2 = n_y + d[1];
+                                if (n_x2 >= 0 && n_x2 < m_bitmap[0].size() && n_y2 >= 0 && n_y2 < m_bitmap.size() &&
+                                    !m_bitmap[n_y2][n_x2]) {
+                                    int n_distance = get_distance(m_closest[n_y2][n_x2], n_x2, n_y2);
+                                    max &= distance_n >= n_distance;
+                                }
                             }
-                        }
-                        if (max && sum <= 6) {
-                            return start_dfs(visited, n_y, n_x, x_sum + n_x, y_sum + n_y, count+1);
+
+                            if (max) {
+                                stack.push({{n_x, n_y},tollerance});
+                            } else if (p.second > 0) {
+                                stack.push({{n_x, n_y},p.second-1});
+                            }
                         }
                     }
                 }
