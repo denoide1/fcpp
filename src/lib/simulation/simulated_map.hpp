@@ -10,6 +10,7 @@
 
 #include <cstring>
 #include <stack>
+#include <queue>
 
 #include "lib/common/traits.hpp"
 #include "lib/component/base.hpp"
@@ -308,9 +309,7 @@ struct simulated_map {
                                 draw_buffers[0].emplace_back(t, color(RED));
 
                                 if (!visited[row_index][col_index]) {
-                                    std::cout << "STARTED" << std::endl;
                                     index_type b = start_it_dfs(visited, row_index, col_index);
-                                    std::cout << "ENDED" << std::endl;
                                     draw_buffers[1].emplace_back(b, color(BLUE));
                                 }
                             }
@@ -320,6 +319,16 @@ struct simulated_map {
                     if (col_index == bitmap_width) {
                         row_index--;
                         col_index = 0;
+                    }
+                }
+
+
+                std::unique_ptr<std::vector<std::vector<std::pair<index_type,color>>>> rooms = create_rooms(draw_buffers[1]);
+
+
+                for (std::vector<std::pair<index_type,color>> const& p_room : *rooms) {
+                    for (std::pair<index_type, color> t: p_room) {
+                        write_point_on_image(bitmap_data, visited, t.first[1], t.first[0], bitmap_width, channels_per_pixel, t.second);
                     }
                 }
 
@@ -354,15 +363,135 @@ struct simulated_map {
 
             }
 
+            std::function<int(int)> get_constraint(int alpha, int beta, index_type closest) {
+
+                real_t a = -2 * alpha;
+                real_t b = -2 * beta;
+                real_t c = std::pow(a,2) + std::pow(b,2) - std::pow(get_distance(closest,alpha,beta),2);
+
+                return [=](int xI) {return  (-a * xI - a * closest[0] - b * closest[1] - 2 * c - 2.0 * xI * closest[0])/(b + 2.0 * closest[1]);};
+
+            }
+
+            bool check_constraints(int x, int y, std::vector<std::function<int(int)>> const& constraints) {
+
+                bool result = true;
+                for (std::function<int(int)> const& constraint : constraints) {
+                    if (y > constraint(x)) {
+                        result = false;
+                        break;
+                    }
+                }
+                return result;
+
+            }
+
+            //! @brief Fills m_closest by parsing the bitmap with two sequential bfs
+            std::unique_ptr<std::vector<std::vector<std::pair<index_type,color>>>> create_rooms(std::vector<std::pair<index_type,color>> barycenters) {
+
+                constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
+
+                static std::array<color,10> colors = {color(RED), color(BLUE), color(AQUA), color(BROWN), color(CYAN), color(GOLD), color(GREEN), color(FUCHSIA), color(INDIGO)};
+
+                std::unique_ptr<std::vector<std::vector<std::pair<index_type,color>>>> rooms = std::make_unique<std::vector<std::vector<std::pair<index_type,color>>>>();
+                int rooms_count = -1;
+
+                //dynamic queues vector with source queue
+                std::queue<index_type> queue;
+                //new visited matrix
+                std::vector<std::vector<bool>> visited(m_bitmap.size(), std::vector<bool>(m_bitmap[0].size()));
+
+                //start bfs
+                for(std::pair<index_type,color> barycentre : barycenters) {
+
+                    queue.push(barycentre.first);
+                    rooms->emplace_back();
+                    rooms_count++;
+
+                    std::vector<std::function<int(int)>> constraints;
+
+                    while (!queue.empty()) {
+                        index_type const &point = queue.front();
+                        queue.pop();
+                        if (!visited[point[1]][point[0]]) {
+                            visited[point[1]][point[0]] = true;
+                            for (std::array<int, 3> const &d: deltas) {
+
+                                size_t n_x = point[0] + d[0];
+                                size_t n_y = point[1] + d[1];
+
+                                if(n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size()) {
+                                    if (m_bitmap[n_y][n_x]) {
+                                        index_type new_p;
+                                        new_p[0] = n_x;
+                                        new_p[1] = n_y;
+                                        constraints.push_back(get_constraint(point[0], point[1], new_p));
+                                    }
+                                    else if (check_constraints(n_x, n_y, constraints)) {
+                                        index_type new_p;
+                                        new_p[0] = n_x;
+                                        new_p[1] = n_y;
+                                        rooms->at(rooms_count).push_back({new_p, colors[rooms_count]});
+                                        queue.push(new_p);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    break;
+                }
+
+                return rooms;
+            }
+
+            //! @brief Fills m_closest by parsing the bitmap with two sequential bfs
+            void fill_closest() {
+                constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
+                m_closest = std::vector<std::vector<index_type>>(m_bitmap.size(),std::vector<index_type>(m_bitmap[0].size()));
+
+                for (int obstacle = 1; obstacle >= 0; obstacle--) {
+                    //dynamic queues vector with source queue
+                    std::vector<std::vector<matrix_pair_type>> queues(1);
+                    //new visited matrix
+                    std::vector<std::vector<bool>> visited(m_bitmap.size(), std::vector<bool>(m_bitmap[0].size()));
+                    //load source points
+                    for (size_t r = 0; r < m_bitmap.size(); r++) {
+                        for (size_t c = 0; c < m_bitmap[0].size(); c++) {
+                            if (m_bitmap[r][c] == obstacle)
+                                queues[0].emplace_back(std::pair<index_type, index_type>({c, r}, {c, r}));
+                        }
+                    }
+                    //start bfs
+                    for (size_t i = 0; i < queues.size(); ++i) {
+                        for (matrix_pair_type const& elem : queues[i]) {
+                            index_type const& point = elem.first;
+                            if (!visited[point[1]][point[0]]) {
+                                if (i > 0) m_closest[point[1]][point[0]] = elem.second;
+                                visited[point[1]][point[0]] = true;
+                                for (std::array<int,3> const& d : deltas) {
+                                    //add queues to add nodes at distance i+2 and i+3
+                                    while (i+d[2] >= queues.size()) queues.emplace_back();
+                                    size_t n_x = point[0] + d[0];
+                                    size_t n_y = point[1] + d[1];
+                                    if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size())
+                                        queues[i+d[2]].push_back({{n_x, n_y}, elem.second});
+                                }
+                            }
+                        }
+                        queues[i].clear();
+                    }
+                    //end bfs
+                }
+            }
 
             index_type start_it_dfs(std::vector<std::vector<bool>>& visited, int row_index, int column_index) {
 
                 constexpr static std::array<std::array<int, 2>, 8> deltas = {{{-1, 0}, {1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}}};
 
                 std::stack<std::pair<std::pair<size_t,size_t>,int>> stack;
-                int tollerance = 15;
+                int tollerance = 5;
                 int x_sum = 0,y_sum = 0,count = 0;
-
 
                 stack.push({{column_index, row_index},tollerance});
 
@@ -416,45 +545,7 @@ struct simulated_map {
 
             }
 
-            //! @brief Fills m_closest by parsing the bitmap with two sequential bfs
-            void fill_closest() {
-                constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
-                m_closest = std::vector<std::vector<index_type>>(m_bitmap.size(),std::vector<index_type>(m_bitmap[0].size()));
 
-                for (int obstacle = 1; obstacle >= 0; obstacle--) {
-                    //dynamic queues vector with source queue
-                    std::vector<std::vector<matrix_pair_type>> queues(1);
-                    //new visited matrix
-                    std::vector<std::vector<bool>> visited(m_bitmap.size(), std::vector<bool>(m_bitmap[0].size()));
-                    //load source points
-                    for (size_t r = 0; r < m_bitmap.size(); r++) {
-                        for (size_t c = 0; c < m_bitmap[0].size(); c++) {
-                            if (m_bitmap[r][c] == obstacle)
-                                queues[0].emplace_back(std::pair<index_type, index_type>({c, r}, {c, r}));
-                        }
-                    }
-                    //start bfs
-                    for (size_t i = 0; i < queues.size(); ++i) {
-                        for (matrix_pair_type const& elem : queues[i]) {
-                            index_type const& point = elem.first;
-                            if (!visited[point[1]][point[0]]) {
-                                if (i > 0) m_closest[point[1]][point[0]] = elem.second;
-                                visited[point[1]][point[0]] = true;
-                                for (std::array<int,3> const& d : deltas) {
-                                    //add queues to add nodes at distance i+2 and i+3
-                                    while (i+d[2] >= queues.size()) queues.emplace_back();
-                                    size_t n_x = point[0] + d[0];
-                                    size_t n_y = point[1] + d[1];
-                                    if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size())
-                                        queues[i+d[2]].push_back({{n_x, n_y}, elem.second});
-                                }
-                            }
-                        }
-                        queues[i].clear();
-                    }
-                    //end bfs
-                }
-            }
 
             //! @brief Convert a generic vector to a compatible position on the map
             template<size_t n>
