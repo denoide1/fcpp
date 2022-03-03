@@ -310,9 +310,9 @@ struct simulated_map {
                                 draw_buffers[0].emplace_back(t, color(RED));
 
                                 if (!visited[row_index][col_index]) {
-                                    index_type b = start_it_dfs(visited, row_index, col_index);
+                                    std::array<int,2> b = start_it_dfs(visited, row_index, col_index);
                                     if(b[0] > 0 && b[1] > 1) {
-                                        draw_buffers[1].emplace_back(b, color(BLUE));
+                                        //draw_buffers[1].emplace_back(b, color(BLUE));
                                         m_barycenters.emplace_back(b, color(BLUE));
                                     }
 
@@ -329,17 +329,31 @@ struct simulated_map {
 
                 create_rooms();
 
+                static std::array<color,13> colors = {color(RED), color(BLUE), color(BROWN), color(LAVENDER), color(CYAN), color(GOLD), color(GREEN), color(FUCHSIA), color(IVORY), color(TOMATO), color(LEMON_CHIFFON), color(SALMON)};
+
+                for(int r = 0; r < m_bitmap.size(); r++) {
+                    for(int c = 0; c < m_bitmap[0].size(); c++) {
+                        if(m_map_rooms[r][c] != -1)
+                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel, colors[m_map_rooms[r][c]],false);
+                    }
+                }
+
+                /*
                 for (std::vector<std::pair<index_type,color>> const& p_room : m_rooms) {
                     for (std::pair<index_type, color> t: p_room) {
                         write_point_on_image(bitmap_data, visited, t.first[1], t.first[0], bitmap_width, channels_per_pixel, t.second,false);
                     }
                 }
+                 */
 
                 for (std::vector<std::pair<index_type,color>> const& p_buffer : draw_buffers) {
                     for (std::pair<index_type, color> t: p_buffer) {
                         write_point_on_image(bitmap_data, visited, t.first[1], t.first[0], bitmap_width, channels_per_pixel, t.second);
                     }
                 }
+
+                write_point_on_image(bitmap_data, visited, m_barycenters[2].first[1], m_barycenters[2].first[0], bitmap_width, channels_per_pixel, color(GREEN),false);
+
 
                 stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
 
@@ -367,103 +381,76 @@ struct simulated_map {
 
             }
 
-            /*
-            int get_constraint(int xI, int alpha, int beta, index_type closest) {
-
-                return (xI - closest[0])/(alpha - closest[0]) * (beta - closest[1]) + closest[1];
-
-            }
-             */
-
-            bool check_constraints(int x, int y, std::set<int>const& yup_constraints, std::set<int>const& ydw_constraints, std::set<int>const& xl_constraints,std::set<int>const& xr_constraints) {
-
-                for (int value : yup_constraints) {
-                    if(y >= value) return false;
-                }
-                for (int value : ydw_constraints) {
-                    if(y <= value) return false;
-                }
-                for (int value : xl_constraints) {
-                    if(x <= value) return false;
-                }
-                for (int value : xr_constraints) {
-                    if(x >= value) return false;
-                }
-                return true;
-            }
 
             //! @brief create rooms for navigations
             void create_rooms() {
 
-                constexpr static std::array<std::array<int, 2>, 8> deltas = {{{-1, 0}, {1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}}};
-
-                static std::array<color,13> colors = {color(RED), color(BLUE), color(BROWN), color(LAVENDER), color(CYAN), color(GOLD), color(GREEN), color(FUCHSIA), color(IVORY), color(TOMATO), color(LEMON_CHIFFON), color(SALMON)};
-
+                constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
                 int rooms_count = -1;
                 int rooms_color = 0;
-
                 //dynamic queues vector with source queue
-                std::queue<index_type> queue;
+                m_map_rooms = std::vector<std::vector<int>>(m_bitmap.size(), std::vector<int>(m_bitmap[0].size(),-1));
+                std::vector<std::vector<int>> distances(m_bitmap.size(), std::vector<int>(m_bitmap[0].size(),-1));
+                std::vector<std::vector<std::pair<std::array<int,2>,int>>> queues(1);
 
                 //start bfs
-                for(std::pair<index_type,color> barycentre : m_barycenters) {
+                //for(std::pair<index_type,color> barycentre : m_barycenters) {
 
-                    queue.push(barycentre.first);
+                    std::pair<std::array<int,2>,color> barycentre = m_barycenters[2];
+
+                    queues[0].emplace_back(barycentre.first,0);
                     m_rooms.emplace_back();
                     rooms_count++;
                     if(rooms_count > 0 && !m_rooms[rooms_count-1].empty()) rooms_color++;
 
                     std::vector<std::vector<bool>> visited(m_bitmap.size(), std::vector<bool>(m_bitmap[0].size()));
 
-                    //constraints sets
-                    std::set<int> yup_constraints,ydw_constraints, xr_constraints, xl_constraints;
+                    //start bfs
+                    for (size_t i = 0; i < queues.size(); ++i) {
+                        for (std::pair<std::array<int,2>,int> const& elem : queues[i]) {
 
-                    while (!queue.empty()) {
-                        index_type const &point = queue.front();
-                        queue.pop();
-                        if (!visited[point[1]][point[0]]) {
-                            visited[point[1]][point[0]] = true;
-                            for (std::array<int, 2> const &d: deltas) {
+                            std::array<int,2> const& point = elem.first;
+                            int distance = elem.second;
 
-                                size_t n_x = point[0] + d[0];
-                                size_t n_y = point[1] + d[1];
+                            if (!visited[point[1]][point[0]]) {
+                                distances[point[1]][point[0]] = distance;
+                                m_map_rooms[point[1]][point[0]] = rooms_count;
+                                visited[point[1]][point[0]] = true;
 
-                                if(n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size()) {
+                                for (std::array<int,3> const& d : deltas) {
+                                    //add queues to add nodes at distance i+2 and i+3
+                                    while (i+d[2] >= queues.size()) queues.emplace_back();
+                                    int n_x = point[0] + d[0];
+                                    int n_y = point[1] + d[1];
+                                    if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size()) {
 
-                                    if (m_bitmap[n_y][n_x]) {
-                                        index_type new_p;
-                                        new_p[0] = n_x;
-                                        new_p[1] = n_y;
+                                        if (m_bitmap[n_y][n_x]) {
 
-                                        if(d[0] == -1 && d[1] == 0) {
-                                           xl_constraints.emplace(n_x);
+                                            std::pair<int ,int> OB = {  barycentre.first[0] - n_x ,barycentre.first[1] - n_y};
+                                            for(int r = 0; r < m_bitmap.size(); r++) {
+                                                for(int c = 0; c < m_bitmap[0].size(); c++) {
+                                                    std::pair<int, int> OP = {c - n_x,r - n_y};
+                                                    if (OP.first * OB.first + OP.second * OB.second <= 80) {
+                                                        visited[r][c] = true;
+                                                        m_map_rooms[r][c] = -1;
+                                                    }
+                                                }
+                                            }
                                         }
-                                        else if(d[0] == 1 && d[1] == 0) {
-                                           xr_constraints.emplace(n_x);
-                                        }
-                                        else if(d[0] == 0 && d[1] == 1) {
-                                           yup_constraints.emplace(n_y);
-                                        }
-                                        else if(d[0] == 0 && d[1] == -1) {
-                                           ydw_constraints.emplace(n_y);
-                                        }
-                                    }
-                                    else if (check_constraints(n_x, n_y,yup_constraints,ydw_constraints,xl_constraints,xr_constraints)) {
-
-                                        if(!m_bitmap[n_y][n_x]) {
-                                            index_type new_p;
+                                        else {
+                                            std::array<int,2> new_p{};
                                             new_p[0] = n_x;
                                             new_p[1] = n_y;
-                                            m_rooms[rooms_count].push_back({new_p, colors[rooms_color]});
-                                            queue.push(new_p);
+                                            queues[i+d[2]].push_back({new_p, distance + d[2]});
                                         }
                                     }
                                 }
                             }
                         }
+                        queues[i].clear();
                     }
                 }
-            }
+
 
             //! @brief Fills m_closest by parsing the bitmap with two sequential bfs
             void fill_closest() {
@@ -505,7 +492,7 @@ struct simulated_map {
                 }
             }
 
-            index_type start_it_dfs(std::vector<std::vector<bool>>& visited, int row_index, int column_index) {
+            std::array<int,2> start_it_dfs(std::vector<std::vector<bool>>& visited, int row_index, int column_index) {
 
                 constexpr static std::array<std::array<int, 2>, 8> deltas = {{{-1, 0}, {1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}}};
 
@@ -557,15 +544,11 @@ struct simulated_map {
                         }
                     }
                 }
-
-                index_type barycentre;
+                std::array<int,2> barycentre{};
                 barycentre[0] = x_sum / count;
                 barycentre[1] = y_sum / count;
                 return barycentre;
-
             }
-
-
 
             //! @brief Convert a generic vector to a compatible position on the map
             template<size_t n>
@@ -606,7 +589,11 @@ struct simulated_map {
             std::vector<std::vector<std::pair<index_type,color>>> m_rooms;
 
             //! @brief Array containing calculated barycenters
-            std::vector<std::pair<index_type,color>> m_barycenters;
+            std::vector<std::pair<std::array<int,2>,color>> m_barycenters;
+
+            //! @brief Array containing calculated barycenters
+            std::vector<std::vector<int>> m_map_rooms;
+
 
         };
     };
