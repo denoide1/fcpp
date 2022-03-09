@@ -338,23 +338,12 @@ struct simulated_map {
                     }
                 }
 
-                /*
-                for (std::vector<std::pair<index_type,color>> const& p_room : m_rooms) {
-                    for (std::pair<index_type, color> t: p_room) {
-                        write_point_on_image(bitmap_data, visited, t.first[1], t.first[0], bitmap_width, channels_per_pixel, t.second,false);
-                    }
-                }
-                 */
-
                 for (std::vector<std::pair<index_type,color>> const& p_buffer : draw_buffers) {
                     for (std::pair<index_type, color> t: p_buffer) {
                         write_point_on_image(bitmap_data, visited, t.first[1], t.first[0], bitmap_width, channels_per_pixel, t.second);
                     }
                 }
-
-                write_point_on_image(bitmap_data, visited, m_barycenters[2].first[1], m_barycenters[2].first[0], bitmap_width, channels_per_pixel, color(GREEN),false);
-
-
+                
                 stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
 
                 stbi_image_free(bitmap_data);
@@ -381,8 +370,11 @@ struct simulated_map {
 
             }
 
+            inline real_t get_eu_distance(real_t px, real_t qx, real_t py, real_t qy) {
+                return std::sqrt((qx-px) * (qx-px) + (qy-py) * (qy-py));
+            }
 
-            bool line_check(std::array<int,2> const& B, int Ox, int Oy, int Px, int Py) {
+            inline bool obstacle_blocking(std::array<int,2> const& B, int Ox, int Oy, int Px, int Py, int k) {
 
                 int OBx = B[0] - Ox;
                 int OBy = B[1] - Oy;
@@ -390,9 +382,18 @@ struct simulated_map {
                 int OPy = Py - Oy;
                 int result = OPx * OBx + OPy * OBy;
 
-                return result <= 80;
-
+                return result <= k * std::sqrt(OBx * OBx + OBy * OBy);
             }
+
+            bool check_obstacles(std::vector<std::pair<real_t,real_t>> const& obstacles, std::array<int,2> const& B, int x, int y, int k) {
+                for (std::pair<real_t,real_t> o : obstacles) {
+                    if(obstacle_blocking(B,o.first,o.second,x,y,k)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
 
             //! @brief create rooms for navigations
             void create_rooms() {
@@ -403,59 +404,47 @@ struct simulated_map {
                 int rooms_color = 0;
                 //dynamic queues vector with source queue
                 m_map_rooms = std::vector<std::vector<int>>(m_bitmap.size(), std::vector<int>(m_bitmap[0].size(), -1));
-                std::vector<std::vector<int>> distances(m_bitmap.size(), std::vector<int>(m_bitmap[0].size(), -1));
-                std::vector<std::vector<std::pair<std::array<int, 2>, int>>> queues(1);
+                std::vector<std::vector<real_t>> distances(m_bitmap.size(), std::vector<real_t>(m_bitmap[0].size(), -1));
+                std::priority_queue<std::pair<real_t, std::array<int, 2>>> queue;
+                std::vector<std::pair<real_t,real_t>> obstacles;
 
                 //start bfs
                 for (std::pair<std::array<int, 2>, color> barycentre: m_barycenters) {
 
-                    //std::pair<std::array<int, 2>, color> barycentre = m_barycenters[0];
-
-                    queues[0].emplace_back(barycentre.first, 0);
+                    queue.push({0, barycentre.first});
                     m_rooms.emplace_back();
                     rooms_count++;
-                    if (rooms_count > 0 && !m_rooms[rooms_count - 1].empty()) rooms_color++;
-
                     std::vector<std::vector<bool>> visited(m_bitmap.size(), std::vector<bool>(m_bitmap[0].size()));
 
                     //start bfs
-                    for (int i = 0; i < queues.size(); i++) {
-                        for (int q_i = 0; q_i < queues[i].size(); q_i++) {
-                            std::pair<std::array<int, 2>, int> elem = queues[i][q_i];
-                            std::array<int, 2> const& point = elem.first;
-                            int distance = elem.second;
-                            //(distance < distances[point[1]][point[0]] && line_check(barycentre.first,m_closest[point[1]][point[0]][0],m_closest[point[1]][point[0]][1],point[0],point[1]))
-                            if (!visited[point[1]][point[0]]) {
-                                distances[point[1]][point[0]] = distance;
-                                m_map_rooms[point[1]][point[0]] = rooms_count;
-                                visited[point[1]][point[0]] = true;
+                    while(!queue.empty()) {
+                        std::pair<real_t, std::array<int, 2>> elem = queue.top();
+                        queue.pop();
+                        std::array<int, 2> const& point = elem.second;
+                        real_t eu_distance = elem.first;
 
-                                for (std::array<int, 3> const &d: deltas) {
-                                    //add queues to add nodes at distance i+2 and i+3
-                                    while (i + d[2] >= queues.size()) queues.emplace_back();
-                                    int n_x = point[0] + d[0];
-                                    int n_y = point[1] + d[1];
-                                    if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size()) {
-                                        if (m_bitmap[n_y][n_x]) {
-                                            for (int r = 0; r < m_bitmap.size(); r++) {
-                                                for (int c = 0; c < m_bitmap[0].size(); c++) {
-                                                    if (line_check(barycentre.first,n_x,n_y,c,r)) {
-                                                        visited[r][c] = true;
-                                                        if (m_map_rooms[r][c] == rooms_count)
-                                                            m_map_rooms[r][c] = -1;
-                                                    }
-                                                }
-                                            }
-                                        } else {
-                                            queues[i + d[2]].push_back({{n_x,n_y}, distance + d[2]});
-                                        }
-                                    }
+                        if (visited[point[1]][point[0]]) continue;
+
+                        distances[point[1]][point[0]] = eu_distance;
+                        m_map_rooms[point[1]][point[0]] = rooms_count;
+                        visited[point[1]][point[0]] = true;
+                        for (std::array<int, 3> const &d: deltas) {
+                            //add queues to add nodes at distance i+2 and i+3
+                            int n_x = point[0] + d[0];
+                            int n_y = point[1] + d[1];
+                            if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size()) {
+                                if (m_bitmap[n_y][n_x]) {
+                                    if(check_obstacles(obstacles,barycentre.first,n_x,n_y,1))
+                                        obstacles.emplace_back(n_x,n_y);
+                                } else {
+                                    real_t n_eu_distance = get_eu_distance(barycentre.first[0],n_x,barycentre.first[1],n_y);
+                                    if (eu_distance < n_eu_distance && check_obstacles(obstacles, barycentre.first,n_x,n_y,-1))
+                                        queue.push({-n_eu_distance,{n_x, n_y}});
                                 }
-
                             }
                         }
-                        queues[i].clear();
                     }
+
                     //if(rooms_count == 0) break;
                 }
             }
