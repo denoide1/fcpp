@@ -329,11 +329,11 @@ struct simulated_map {
 
                 create_rooms();
 
-                static std::array<color,13> colors = {color(RED), color(BLUE), color(BROWN), color(LAVENDER), color(CYAN), color(GOLD), color(GREEN), color(FUCHSIA), color(IVORY), color(TOMATO), color(LEMON_CHIFFON), color(SALMON)};
+                static std::array<color,13> colors = {color(RED), color(BLUE), color(BROWN), color(LAVENDER), color(CYAN), color(ORANGE), color(GREEN), color(FUCHSIA), color(VIOLET), color(TOMATO), color(POWDER_BLUE), color(SALMON)};
 
                 for(int r = 0; r < m_bitmap.size(); r++) {
                     for(int c = 0; c < m_bitmap[0].size(); c++) {
-                        if(m_map_rooms[r][c] != -1)
+                        if(m_map_rooms[r][c] > 0)
                             write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel, colors[m_map_rooms[r][c]],false);
                     }
                 }
@@ -343,7 +343,7 @@ struct simulated_map {
                         write_point_on_image(bitmap_data, visited, t.first[1], t.first[0], bitmap_width, channels_per_pixel, t.second);
                     }
                 }
-                
+
                 stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
 
                 stbi_image_free(bitmap_data);
@@ -400,11 +400,9 @@ struct simulated_map {
 
                 constexpr static std::array<std::array<int, 3>, 8> deltas = {
                         {{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
-                int rooms_count = -1;
-                int rooms_color = 0;
+                int rooms_count = 0;
                 //dynamic queues vector with source queue
-                m_map_rooms = std::vector<std::vector<int>>(m_bitmap.size(), std::vector<int>(m_bitmap[0].size(), -1));
-                std::vector<std::vector<real_t>> distances(m_bitmap.size(), std::vector<real_t>(m_bitmap[0].size(), -1));
+                m_map_rooms = std::vector<std::vector<int>>(m_bitmap.size(), std::vector<int>(m_bitmap[0].size(), 0));
                 std::priority_queue<std::pair<real_t, std::array<int, 2>>> queue;
                 std::vector<std::pair<real_t,real_t>> obstacles;
 
@@ -418,22 +416,26 @@ struct simulated_map {
 
                     //start bfs
                     while(!queue.empty()) {
+                        
                         std::pair<real_t, std::array<int, 2>> elem = queue.top();
                         queue.pop();
                         std::array<int, 2> const& point = elem.second;
                         real_t eu_distance = elem.first;
 
-                        if (visited[point[1]][point[0]]) continue;
-
-                        distances[point[1]][point[0]] = eu_distance;
+                        if (m_map_rooms[point[1]][point[0]] > 0) continue;
+                        //distances[point[1]][point[0]] = eu_distance;
                         m_map_rooms[point[1]][point[0]] = rooms_count;
-                        visited[point[1]][point[0]] = true;
+                        //visited[point[1]][point[0]] = true;
                         for (std::array<int, 3> const &d: deltas) {
                             //add queues to add nodes at distance i+2 and i+3
                             int n_x = point[0] + d[0];
                             int n_y = point[1] + d[1];
+
+                            if(m_map_rooms[n_y][n_x] <= 0)
+                                m_map_rooms[n_y][n_x] = -rooms_count;
+
                             if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size()) {
-                                if (m_bitmap[n_y][n_x]) {
+                                if (m_bitmap[n_y][n_x] || (m_map_rooms[n_y][n_x] > 0 && m_map_rooms[n_y][n_x] != rooms_count)) {
                                     if(check_obstacles(obstacles,barycentre.first,n_x,n_y,1))
                                         obstacles.emplace_back(n_x,n_y);
                                 } else {
@@ -445,7 +447,7 @@ struct simulated_map {
                         }
                     }
 
-                    //if(rooms_count == 0) break;
+                    //if(rooms_count == 1) break;
                 }
             }
 
