@@ -326,7 +326,7 @@ struct simulated_map {
                                 }
                             }
 
-                            if (max && distance > 4) {
+                            if (max && distance > 16) {
                                 index_type t;
                                 t[0] = col_index;
                                 t[1] = row_index;
@@ -340,7 +340,7 @@ struct simulated_map {
                                         b2[0] = b[0];
                                         b2[1] = b[1];
                                         draw_buffers[1].emplace_back(b2, color(BLUE));
-                                        m_barycenters.emplace_back(b, color(BLUE));
+                                        m_centroids.emplace(get_distance(b2,closest_map[b2[1]][b2[0]][0],closest_map[b2[1]][b2[0]][1]),b);
                                     }
 
                                 }
@@ -362,7 +362,7 @@ struct simulated_map {
                 for(int r = 0; r < m_bitmap.size(); r++) {
                     for(int c = 0; c < m_bitmap[0].size(); c++) {
                         if(m_map_rooms[r][c] > 0)
-                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel, array_color_i[m_map_rooms[r][c]],false);
+                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel, color::hsva(30 * ((m_map_rooms[r][c]/4)%12), 0.5 + 0.5*((m_map_rooms[r][c]/2)%2), 0.5 + 0.5*(m_map_rooms[r][c]%2)),false);
                     }
                 }
 
@@ -373,8 +373,6 @@ struct simulated_map {
                 }
 
                 stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
-
-                m_barycenters.clear();
 
                 stbi_image_free(bitmap_data);
 
@@ -437,10 +435,21 @@ struct simulated_map {
                 std::priority_queue<std::pair<real_t, std::array<int, 2>>> queue;
                 std::vector<std::pair<real_t,real_t>> obstacles;
 
-                //start bfs
-                for (std::pair<std::array<int, 2>, color> barycentre: m_barycenters) {
+                std::vector<std::array<int,2>> filtered_centroids;
 
-                    queue.push({0, barycentre.first});
+                int max_distance = m_centroids.top().first;
+
+                for (int i = 0; i < m_centroids.size(); i++) {
+                    if (m_centroids.top().first >= max_distance / 2) {
+                        filtered_centroids.emplace_back(std::array<int,2>({m_centroids.top().second[0],m_centroids.top().second[1]}));
+                    }
+                    m_centroids.pop();
+                }
+
+                //start bfs
+                for (std::array<int,2> centroid : filtered_centroids) {
+
+                    queue.push({0, centroid});
                     m_rooms.emplace_back();
                     m_rooms_count++;
                     std::vector<std::vector<bool>> visited(obstacles_map.size(), std::vector<bool>(obstacles_map[0].size()));
@@ -468,17 +477,16 @@ struct simulated_map {
                                     m_map_rooms[n_y][n_x] = -m_rooms_count;
 
                                 if (m_bitmap[n_y][n_x] || (m_map_rooms[n_y][n_x] > 0 && m_map_rooms[n_y][n_x] != m_rooms_count)) {
-                                    if(check_obstacles(obstacles,barycentre.first,n_x,n_y,1))
+                                    if(check_obstacles(obstacles,centroid,n_x,n_y,1))
                                         obstacles.emplace_back(n_x,n_y);
                                 } else {
-                                    real_t n_eu_distance = get_eu_distance(barycentre.first[0],n_x,barycentre.first[1],n_y);
-                                    if (eu_distance < n_eu_distance && check_obstacles(obstacles, barycentre.first,n_x,n_y,-1))
+                                    real_t n_eu_distance = get_eu_distance(centroid[0],n_x,centroid[1],n_y);
+                                    if (eu_distance < n_eu_distance && check_obstacles(obstacles, centroid,n_x,n_y,-1))
                                         queue.push({-n_eu_distance,{n_x, n_y}});
                                 }
                             }
                         }
                     }
-
                     //if(rooms_count == 1) break;
                 }
             }
@@ -658,32 +666,24 @@ struct simulated_map {
             //! @brief Matrix containing each point of a specific room
             std::vector<std::vector<std::pair<index_type,color>>> m_rooms;
 
-            //! @brief Array containing calculated barycenters
-            std::vector<std::pair<std::array<int,2>,color>> m_barycenters;
+            //! @brief Array containing calculated centroids
+            std::priority_queue<std::pair<int,std::array<int,2>>> m_centroids;
 
             //! @brief Array containing calculated barycenters
             std::vector<std::vector<int>> m_map_rooms;
 
-            color array_color_i[141] {
-                    color(ALICE_BLUE),
-                    color(ANTIQUE_WHITE),
-                    color(AQUA),
-                    color(AQUAMARINE),
+            color array_color_i[115] {
                     color(AZURE),
                     color(BROWN),
-                    color(BLACK),
                     color(BLUE),
                     color(BEIGE),
                     color(BISQUE),
-                    color(BLANCHED_ALMOND),
                     color(BLUE_VIOLET),
                     color(BURLY_WOOD),
                     color(CADET_BLUE),
-                    color(CHARTREUSE),
                     color(CHOCOLATE),
                     color(CORAL),
                     color(CORNFLOWER_BLUE),
-                    color(CORNSILK),
                     color(CRIMSON),
                     color(CYAN),
                     color(DARK_BLUE),
@@ -720,7 +720,6 @@ struct simulated_map {
                     color(GREEN_YELLOW),
                     color(HONEY_DEW),
                     color(HOT_PINK),
-                    color(IVORY),
                     color(INDIAN_RED),
                     color(INDIGO),
                     color(LIGHT_YELLOW),
@@ -728,21 +727,6 @@ struct simulated_map {
                     color(LAVENDER),
                     color(LAVENDER_BLUSH),
                     color(LAWN_GREEN),
-                    color(LIGHT_BLUE),
-                    color(LIGHT_CORAL),
-                    color(LIGHT_CYAN),
-                    color(LIGHT_GOLDENROD_YELLOW),
-                    color(LIGHT_GRAY),
-                    color(LIGHT_GREEN),
-                    color(LIGHT_PINK),
-                    color(LIGHT_SALMON),
-                    color(LIGHT_SEA_GREEN),
-                    color(LIGHT_SKY_BLUE),
-                    color(LIGHT_SLATE_GRAY),
-                    color(LIGHT_STEEL_BLUE),
-                    color(LIME),
-                    color(LIME_GREEN),
-                    color(LINEN),
                     color(MAGENTA),
                     color(MAROON),
                     color(MEDIUM_AQUAMARINE),
@@ -791,7 +775,6 @@ struct simulated_map {
                     color(SKY_BLUE),
                     color(SLATE_BLUE),
                     color(SLATE_GRAY),
-                    color(SNOW),
                     color(SPRING_GREEN),
                     color(STEEL_BLUE),
                     color(TOMATO),
@@ -805,7 +788,6 @@ struct simulated_map {
                     color(MEDIUM_VIOLET_RED),
                     color(DARK_VIOLET),
                     color(BLUE_VIOLET),
-                    color(WHEAT)
             };
 
 
