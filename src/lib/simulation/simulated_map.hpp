@@ -159,26 +159,41 @@ struct simulated_map {
 
                 m_map_rooms = std::vector<std::vector<int>>(m_bitmap.size(), std::vector<int>(m_bitmap[0].size(), 0));
 
-                fill_closest(common::get_or<tags::obstacles>(t, ""),m_closest, m_bitmap, std::function<bool(int,int,bool,int)>([](int x, int y, bool bitmap, int obstacle) {return bitmap == obstacle;}));
+                auto rooms_function = std::function<bool(int, int, int, int, std::vector<std::vector<bool>>&)>([&](int x, int y, int bitmap, int obstacle, std::vector<std::vector<bool>>& visited_matrix) {
+                    if (obstacle == 1) {
+                        return bitmap > 0 || (bitmap == 0 && m_bitmap[y][x]);
+                    } else if (obstacle == 0) {
+                        return (bitmap < 0 || (bitmap == 0 && !m_bitmap[y][x]));
+                    }
+                    return false;
+                });
+
+                auto rooms_function_no_obstacle = std::function<bool(int, int, int, int, std::vector<std::vector<bool>>&)>([&](int x, int y, int bitmap, int obstacle, std::vector<std::vector<bool>>& visited_matrix) {
+                    if(m_bitmap[y][x]) visited_matrix[y][x] = true;
+                    if (obstacle == 1) {
+                        return bitmap > 0;
+                    } else if (obstacle == 0) {
+                        return (bitmap < 0 || (bitmap == 0 && !m_bitmap[y][x]));
+                    }
+                    return false;
+                });
+
+                fill_closest(m_closest, m_bitmap, std::function<bool(int,int,bool,int,std::vector<std::vector<bool>>&)>([](int x, int y, bool bitmap, int obstacle, std::vector<std::vector<bool>>& visited_matrix) {return bitmap == obstacle;}));
 
                 start_room_subdivision(m_closest, m_bitmap, std::function<bool(int,int,bool, int)>([](int x, int y, bool element, int arg) {return element;}),common::get_or<tags::obstacles>(t, ""));
 
-
+                int red_point = 0;
                 do {
-
-                    fill_closest(common::get_or<tags::obstacles>(t, ""), m_rooms_closest, m_map_rooms,
-                                 std::function<bool(int, int, int, int)>([&](int x, int y, int bitmap, int obstacle) {
-                                     if (obstacle == 1) {
-                                         return bitmap > 0 || (bitmap == 0 && m_bitmap[y][x]);
-                                     } else if (obstacle == 0) {
-                                         return (bitmap < 0 || (bitmap == 0 && !m_bitmap[y][x]));
-                                     }
-                                     return false;
-                                 }), true);
-
+                    fill_closest(m_rooms_closest, m_map_rooms, rooms_function);
+                    red_point = start_room_subdivision(m_rooms_closest, m_map_rooms, std::function<bool(int, int, int, int)>([&](int x, int y, int element, int arg) {return element > 0 || (element == 0 && m_bitmap[y][x]);}), common::get_or<tags::obstacles>(t, ""), false);
                 }
-                while (start_room_subdivision(m_rooms_closest, m_map_rooms, std::function<bool(int, int, int, int)>([&](int x, int y, int element, int arg) {return element > 0 || (element == 0 && m_bitmap[y][x]);}), common::get_or<tags::obstacles>(t, ""), false) != 0);
+                while (red_point != 0);
                 //fill_closest(m_rooms_closest, m_map_rooms, [](auto bitmap, auto obstacle){return bitmap >= 0;});
+
+                fill_closest(m_rooms_closest, m_map_rooms, rooms_function_no_obstacle);
+
+                fill_empty_spaces(common::get_or<tags::obstacles>(t, ""));
+
 
             }
 
@@ -342,7 +357,6 @@ struct simulated_map {
                                         draw_buffers[1].emplace_back(b2, color(BLUE));
                                         m_centroids.emplace(get_distance(b2,closest_map[b2[1]][b2[0]][0],closest_map[b2[1]][b2[0]][1]),b);
                                     }
-
                                 }
                             }
                         }
@@ -424,7 +438,42 @@ struct simulated_map {
             }
 
 
-            //! @brief create rooms for navigations
+            void fill_empty_spaces(std::string const& path) {
+                int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index;
+                std::string real_path;
+
+#if _WIN32
+                real_path = std::string(".\\textures\\").append(path);
+#else
+                //real_path = std::string("./textures/").append(path);
+                real_path = path;
+#endif
+                unsigned char *bitmap_data = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height, &channels_per_pixel, 3);
+                if (bitmap_data == nullptr) throw std::runtime_error("Error in image loading");
+
+                std::vector<std::vector<bool>> visited(m_bitmap.size(), std::vector<bool>(m_bitmap[0].size()));
+
+                for(int r = 0; r < m_map_rooms.size(); r++) {
+                    for(int c = 0; c < m_map_rooms[0].size(); c++) {
+                        if(m_map_rooms[r][c] < 0 || (m_map_rooms[r][c] == 0 && !m_bitmap[r][c])){
+                            index_type t = m_rooms_closest[r][c];
+                            m_map_rooms[r][c] = m_map_rooms[t[1]][t[0]];
+                        }
+                    }
+                }
+
+                for(int r = 0; r < m_bitmap.size(); r++) {
+                    for(int c = 0; c < m_bitmap[0].size(); c++) {
+                        if(m_map_rooms[r][c] > 0)
+                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel, color::hsva(30 * ((m_map_rooms[r][c]/4)%12), 0.5 + 0.5*((m_map_rooms[r][c]/2)%2), 0.5 + 0.5*(m_map_rooms[r][c]%2)),false);
+                    }
+                }
+
+                stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
+
+            }
+
+                //! @brief create rooms for navigations
             template <typename obstacle_type, typename obstacle_arg>
             void create_rooms(std::vector<std::vector<obstacle_type>>& obstacles_map, std::function<bool(int,int,obstacle_type,obstacle_arg)> predicate) {
 
@@ -493,24 +542,10 @@ struct simulated_map {
 
 
             //! @brief Fills m_closest by parsing the bitmap with two sequential bfs
-
             template <typename obstacle_type, typename obstacle_arg>
-            void fill_closest(const char* path, std::vector<std::vector<index_type>>& fill_map, std::vector<std::vector<obstacle_type>>& obstacles_map, std::function<bool(int,int,obstacle_type,obstacle_arg)> predicate, bool breakp = false) {
+            void fill_closest(std::vector<std::vector<index_type>>& closest_map, std::vector<std::vector<obstacle_type>>& obstacles_map, std::function<bool(int, int, obstacle_type, obstacle_arg, std::vector<std::vector<bool>>&)> predicate) {
                 constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
-                fill_map = std::vector<std::vector<index_type>>(obstacles_map.size(),std::vector<index_type>(obstacles_map[0].size()));
-
-                /*
-                int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index;
-                std::string real_path;
-#if _WIN32
-                real_path = std::string(".\\textures\\").append(path);
-#else
-                //real_path = std::string("./textures/").append(path);
-                real_path = path;
-#endif
-                unsigned char *bitmap_data = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height, &channels_per_pixel, 3);
-                if (bitmap_data == nullptr) throw std::runtime_error("Error in image loading");
-                */
+                closest_map = std::vector<std::vector<index_type>>(obstacles_map.size(), std::vector<index_type>(obstacles_map[0].size()));
 
                 for (int obstacle = 1; obstacle >= 0; obstacle--) {
                     //dynamic queues vector with source queue
@@ -520,32 +555,17 @@ struct simulated_map {
                     //load source points
                     for (size_t r = 0; r < obstacles_map.size(); r++) {
                         for (size_t c = 0; c < obstacles_map[0].size(); c++) {
-                            if (predicate(c,r,obstacles_map[r][c],obstacle)) {
+                            if (predicate(c, r, obstacles_map[r][c], obstacle, visited)) {
                                 queues[0].emplace_back(std::pair<index_type, index_type>({c, r}, {c, r}));
-                                //if(breakp && obstacle == 1)
-                                //write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel,color(RED), false);
                             }
-                            /*
-                            else {
-                                if(breakp && obstacle == 1)
-                                std::cout<<"r: "<<r<<"c: "<<c<<" m_map_rooms_value:"<<m_map_rooms[r][c]<<std::endl;
-                            }
-                             */
                         }
                     }
-
-                    /*
-                    if(breakp && obstacle == 1) {
-                        stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
-                        return;
-                    }
-                     */
                     //start bfs
                     for (size_t i = 0; i < queues.size(); ++i) {
                         for (matrix_pair_type const& elem : queues[i]) {
                             index_type const& point = elem.first;
                             if (!visited[point[1]][point[0]]) {
-                                if (i > 0) fill_map[point[1]][point[0]] = elem.second;
+                                if (i > 0) closest_map[point[1]][point[0]] = elem.second;
                                 visited[point[1]][point[0]] = true;
                                 for (std::array<int,3> const& d : deltas) {
                                     //add queues to add nodes at distance i+2 and i+3
@@ -561,8 +581,6 @@ struct simulated_map {
                     }
                     //end bfs
                 }
-
-
             }
 
             template <typename obstacle_type, typename obstacle_arg>
