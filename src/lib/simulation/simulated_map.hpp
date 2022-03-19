@@ -8,10 +8,13 @@
 #ifndef FCPP_SIMULATED_MAP_H_
 #define FCPP_SIMULATED_MAP_H_
 
+
+#include <math.h>
 #include <cstring>
 #include <stack>
 #include <queue>
 #include <set>
+#include <map>
 
 #include "lib/common/traits.hpp"
 #include "lib/component/base.hpp"
@@ -160,21 +163,16 @@ struct simulated_map {
                 m_map_rooms = std::vector<std::vector<int>>(m_bitmap.size(), std::vector<int>(m_bitmap[0].size(), 0));
 
                 auto rooms_function = std::function<bool(int, int, int, int, std::vector<std::vector<bool>>&)>([&](int x, int y, int bitmap, int obstacle, std::vector<std::vector<bool>>& visited_matrix) {
-                    if (obstacle == 1) {
+                    if (obstacle == 1)
                         return bitmap > 0 || (bitmap == 0 && m_bitmap[y][x]);
-                    } else if (obstacle == 0) {
+                    else if (obstacle == 0)
                         return (bitmap < 0 || (bitmap == 0 && !m_bitmap[y][x]));
-                    }
                     return false;
                 });
 
                 auto rooms_function_no_obstacle = std::function<bool(int, int, int, int, std::vector<std::vector<bool>>&)>([&](int x, int y, int bitmap, int obstacle, std::vector<std::vector<bool>>& visited_matrix) {
                     if(m_bitmap[y][x]) visited_matrix[y][x] = true;
-                    if (obstacle == 1) {
-                        return bitmap > 0;
-                    } else if (obstacle == 0) {
-                        return (bitmap < 0 || (bitmap == 0 && !m_bitmap[y][x]));
-                    }
+                    if (obstacle == 1) return bitmap > 0; else if (obstacle == 0) return (bitmap < 0 || (bitmap == 0 && !m_bitmap[y][x]));
                     return false;
                 });
 
@@ -188,12 +186,12 @@ struct simulated_map {
                     red_point = start_room_subdivision(m_rooms_closest, m_map_rooms, std::function<bool(int, int, int, int)>([&](int x, int y, int element, int arg) {return element > 0 || (element == 0 && m_bitmap[y][x]);}), common::get_or<tags::obstacles>(t, ""), false);
                 }
                 while (red_point != 0);
-                //fill_closest(m_rooms_closest, m_map_rooms, [](auto bitmap, auto obstacle){return bitmap >= 0;});
 
                 fill_closest(m_rooms_closest, m_map_rooms, rooms_function_no_obstacle);
 
                 fill_empty_spaces(common::get_or<tags::obstacles>(t, ""));
 
+                calculate_waypoints(common::get_or<tags::obstacles>(t, ""));
 
             }
 
@@ -299,7 +297,7 @@ struct simulated_map {
             template <typename obstacle_type, typename obstacle_arg>
             int start_room_subdivision(std::vector<std::vector<index_type>>& closest_map, std::vector<std::vector<obstacle_type>>& obstacles_map, std::function<bool(int,int,obstacle_type,obstacle_arg)> predicate, std::string const& path, bool noroom = false) {
 
-                constexpr static std::array<std::array<int, 2>, 8> deltas = {{{-1, 0}, {1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}}};
+                constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
                 int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index;
                 std::string real_path;
                 int point_number = 0;
@@ -332,7 +330,7 @@ struct simulated_map {
                             int distance = get_distance(closest_map[row_index][col_index], col_index, row_index);
                             int n_distance;
                             bool max = true;
-                            for (std::array<int, 2> const &d: deltas) {
+                            for (std::array<int, 3> const &d: deltas) {
                                 size_t n_x = col_index + d[0];
                                 size_t n_y = row_index + d[1];
                                 if (n_x >= 0 && n_x < obstacles_map[0].size() && n_y >= 0 && n_y < obstacles_map.size() && !predicate(n_x,n_y,obstacles_map[n_y][n_x],0)) {
@@ -394,6 +392,94 @@ struct simulated_map {
 
             }
 
+            int calculate_waypoints(std::string const& path) {
+
+                constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
+                int bitmap_width, bitmap_height, channels_per_pixel;
+                std::vector<std::vector<bool>> visited(m_bitmap.size(), std::vector<bool>(m_bitmap[0].size()));
+                std::string real_path;
+                int point_number = 0;
+#if _WIN32
+                real_path = std::string(".\\textures\\").append(path);
+#else
+                //real_path = std::string("./textures/").append(path);
+                real_path = path;
+#endif
+                unsigned char *bitmap_data = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height, &channels_per_pixel, 3);
+                if (bitmap_data == nullptr) throw std::runtime_error("Error in image loading");
+
+                for (int r = 0; r < m_map_rooms.size(); r++) {
+                    for (int c = 0; c < m_map_rooms[0].size(); c++) {
+                        if (!m_bitmap[r][c]) {
+                            int current_cell_id = m_map_rooms[r][c];
+                            for(auto& d : deltas){
+                                int n_x = c + d[0];
+                                int n_y = r + d[1];
+                                if (n_x >= 0 && n_x < m_map_rooms[0].size() && n_y >= 0 && n_y < m_map_rooms.size() && !m_bitmap[n_y][n_x]) {
+                                    int neighbour_id = m_map_rooms[n_y][n_x];
+                                    if (current_cell_id != neighbour_id) {
+                                        try {
+                                            m_waypoint_map.at({current_cell_id, neighbour_id}).emplace_back(n_x, n_y);
+                                        }
+                                        catch (const std::out_of_range &e) {
+                                            m_waypoint_map.emplace(std::pair<int, int>(current_cell_id, neighbour_id),
+                                                                   std::vector<std::pair<int, int>>());
+                                            m_waypoint_map.at({current_cell_id, neighbour_id}).emplace_back(n_x, n_y);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for(int r = 0; r < m_bitmap.size(); r++) {
+                    for(int c = 0; c < m_bitmap[0].size(); c++) {
+                        if(m_map_rooms[r][c] > 0)
+                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel, color::hsva(30 * ((m_map_rooms[r][c]/4)%12), 0.5 + 0.5*((m_map_rooms[r][c]/2)%2), 0.5 + 0.5*(m_map_rooms[r][c]%2)),false);
+                    }
+                }
+
+
+                for(auto & iter : m_waypoint_map)
+                {
+                    std::vector<std::pair<int,int>> curr_vec = iter.second;
+                    int sumX = 0;
+                    int sumY = 0;
+                    for(std::pair<int,int>& c : curr_vec){
+                        sumX += c.first;
+                        sumY += c.second;
+                    }
+                    write_point_on_image(bitmap_data, visited, sumY/curr_vec.size(), sumX/curr_vec.size(), bitmap_width, channels_per_pixel, color(RED));
+
+                }
+
+                stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
+
+
+                /*
+                for(int r = 0; r < m_bitmap.size(); r++) {
+                    for(int c = 0; c < m_bitmap[0].size(); c++) {
+                        if(m_map_rooms[r][c] > 0)
+                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel, color::hsva(30 * ((m_map_rooms[r][c]/4)%12), 0.5 + 0.5*((m_map_rooms[r][c]/2)%2), 0.5 + 0.5*(m_map_rooms[r][c]%2)),false);
+                    }
+                }
+
+                for (std::vector<std::pair<index_type,color>> const& p_buffer : draw_buffers) {
+                    for (std::pair<index_type, color> t: p_buffer) {
+                        write_point_on_image(bitmap_data, visited, t.first[1], t.first[0], bitmap_width, channels_per_pixel, t.second);
+                    }
+                }*/
+
+                stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
+
+                stbi_image_free(bitmap_data);
+
+                return point_number;
+
+            }
+
+
             void write_point_on_image(unsigned char* pointer, std::vector<std::vector<bool>>& visited, int row, int col, int bitmap_width, int channels, color clr, bool visit = true) {
 
                 if(col >= 0 && col < m_bitmap[0].size() && row >= 0 && row < m_bitmap.size()) {
@@ -441,7 +527,6 @@ struct simulated_map {
             void fill_empty_spaces(std::string const& path) {
                 int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index;
                 std::string real_path;
-
 #if _WIN32
                 real_path = std::string(".\\textures\\").append(path);
 #else
@@ -473,13 +558,13 @@ struct simulated_map {
 
             }
 
-                //! @brief create rooms for navigations
+            //! @brief create rooms for navigations
             template <typename obstacle_type, typename obstacle_arg>
             void create_rooms(std::vector<std::vector<obstacle_type>>& obstacles_map, std::function<bool(int,int,obstacle_type,obstacle_arg)> predicate) {
 
-                constexpr static std::array<std::array<int, 3>, 8> deltas = {
-                        {{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
+                constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
                 //int rooms_count = 0;
+
                 //dynamic queues vector with source queue
                 std::priority_queue<std::pair<real_t, std::array<int, 2>>> queue;
                 std::vector<std::pair<real_t,real_t>> obstacles;
@@ -583,11 +668,12 @@ struct simulated_map {
                 }
             }
 
+
+
             template <typename obstacle_type, typename obstacle_arg>
             std::array<int,2> start_it_dfs(std::vector<std::vector<index_type>>& closest_map, std::vector<std::vector<obstacle_type>>& obstacles_map, std::function<bool(int,int,obstacle_type,obstacle_arg)> predicate, std::vector<std::vector<bool>>& visited, int row_index, int column_index) {
 
-                constexpr static std::array<std::array<int, 2>, 8> deltas = {{{-1, 0}, {1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}}};
-
+                constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3}, {-1, -1, 3}}};
                 std::stack<std::pair<std::pair<size_t,size_t>,int>> stack;
                 int tollerance = 5;
                 int x_sum = 0,y_sum = 0,count = 0;
@@ -609,7 +695,7 @@ struct simulated_map {
                         y_sum += p.first.second;
                     }
 
-                    for (std::array<int, 2> const &d: deltas) {
+                    for (std::array<int, 3> const &d: deltas) {
 
                         size_t n_x = p.first.first + d[0];
                         size_t n_y = p.first.second + d[1];
@@ -618,7 +704,7 @@ struct simulated_map {
 
                             int distance_n = get_distance(closest_map[n_y][n_x], n_x, n_y);
                             bool max = true;
-                            for (std::array<int, 2> const &d: deltas) {
+                            for (std::array<int, 3> const &d: deltas) {
                                 size_t n_x2 = n_x + d[0];
                                 size_t n_y2 = n_y + d[1];
                                 if (n_x2 >= 0 && n_x2 < obstacles_map[0].size() && n_y2 >= 0 && n_y2 < obstacles_map.size() && !predicate(n_x,n_y,obstacles_map[n_y][n_x],0)) {
@@ -649,6 +735,7 @@ struct simulated_map {
                     t[i] = vec[i];
                 return t;
             }
+
 
 
             int m_rooms_count = 0;
@@ -690,124 +777,7 @@ struct simulated_map {
             //! @brief Array containing calculated barycenters
             std::vector<std::vector<int>> m_map_rooms;
 
-            color array_color_i[115] {
-                    color(AZURE),
-                    color(BROWN),
-                    color(BLUE),
-                    color(BEIGE),
-                    color(BISQUE),
-                    color(BLUE_VIOLET),
-                    color(BURLY_WOOD),
-                    color(CADET_BLUE),
-                    color(CHOCOLATE),
-                    color(CORAL),
-                    color(CORNFLOWER_BLUE),
-                    color(CRIMSON),
-                    color(CYAN),
-                    color(DARK_BLUE),
-                    color(DARK_CYAN),
-                    color(DARK_GOLDENROD),
-                    color(DARK_GRAY),
-                    color(DARK_GREEN),
-                    color(DARK_KHAKI),
-                    color(DARK_MAGENTA),
-                    color(DARK_OLIVE_GREEN),
-                    color(DARK_ORANGE),
-                    color(DARK_ORCHID),
-                    color(DARK_RED),
-                    color(DARK_SALMON),
-                    color(DARK_SEA_GREEN),
-                    color(DARK_SLATE_BLUE),
-                    color(DARK_SLATE_GRAY),
-                    color(DARK_TURQUOISE),
-                    color(DARK_VIOLET),
-                    color(DEEP_PINK),
-                    color(DEEP_SKY_BLUE),
-                    color(DIM_GRAY),
-                    color(DODGER_BLUE),
-                    color(FIRE_BRICK),
-                    color(FLORAL_WHITE),
-                    color(FOREST_GREEN),
-                    color(FUCHSIA),
-                    color(GREEN),
-                    color(GAINSBORO),
-                    color(GHOST_WHITE),
-                    color(GOLD),
-                    color(GOLDENROD),
-                    color(GRAY),
-                    color(GREEN_YELLOW),
-                    color(HONEY_DEW),
-                    color(HOT_PINK),
-                    color(INDIAN_RED),
-                    color(INDIGO),
-                    color(LIGHT_YELLOW),
-                    color(LEMON_CHIFFON),
-                    color(LAVENDER),
-                    color(LAVENDER_BLUSH),
-                    color(LAWN_GREEN),
-                    color(MAGENTA),
-                    color(MAROON),
-                    color(MEDIUM_AQUAMARINE),
-                    color(MEDIUM_BLUE),
-                    color(MEDIUM_ORCHID),
-                    color(MEDIUM_PURPLE),
-                    color(MEDIUM_SEA_GREEN),
-                    color(MEDIUM_SLATE_BLUE),
-                    color(MEDIUM_SPRING_GREEN),
-                    color(MEDIUM_TURQUOISE),
-                    color(MEDIUM_VIOLET_RED),
-                    color(MIDNIGHT_BLUE),
-                    color(MINT_CREAM),
-                    color(MISTY_ROSE),
-                    color(MOCCASIN),
-                    color(NAVAJO_WHITE),
-                    color(NAVY),
-                    color(ORANGE),
-                    color(OLD_LACE),
-                    color(OLIVE),
-                    color(OLIVE_DRAB),
-                    color(ORANGE_RED),
-                    color(ORCHID),
-                    color(POWDER_BLUE),
-                    color(PALE_GOLDENROD),
-                    color(PALE_GREEN),
-                    color(PALE_TURQUOISE),
-                    color(PALE_VIOLET_RED),
-                    color(PAPAYA_WHIP),
-                    color(PEACH_PUFF),
-                    color(PERU),
-                    color(PINK),
-                    color(PLUM),
-                    color(PURPLE),
-                    color(RED),
-                    color(REBECCA_PURPLE),
-                    color(ROSY_BROWN),
-                    color(ROYAL_BLUE),
-                    color(SALMON),
-                    color(SADDLE_BROWN),
-                    color(SANDY_BROWN),
-                    color(SEA_GREEN),
-                    color(SEA_SHELL),
-                    color(SIENNA),
-                    color(SILVER),
-                    color(SKY_BLUE),
-                    color(SLATE_BLUE),
-                    color(SLATE_GRAY),
-                    color(SPRING_GREEN),
-                    color(STEEL_BLUE),
-                    color(TOMATO),
-                    color(TAN),
-                    color(TEAL),
-                    color(THISTLE),
-                    color(TURQUOISE),
-                    color(VIOLET),
-                    color(PALE_VIOLET_RED),
-                    color(PALE_VIOLET_RED),
-                    color(MEDIUM_VIOLET_RED),
-                    color(DARK_VIOLET),
-                    color(BLUE_VIOLET),
-            };
-
+            std::map<std::pair<int,int>,std::vector<std::pair<int,int>>> m_waypoint_map;
 
 
         };
