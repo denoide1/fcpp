@@ -281,7 +281,7 @@ struct simulated_map {
                 m_bitmap = std::vector<std::vector<bool>>(bitmap_height,std::vector<bool>(bitmap_width,true));
 
                 while (row_index >= 0) {
-                    unsigned char* pixel_ptr = (bitmap_data + (channels_per_pixel * ((bitmap_width - row_index) * bitmap_width + col_index)));
+                    unsigned char* pixel_ptr = (bitmap_data + (channels_per_pixel * ((bitmap_height - row_index) * bitmap_width + col_index)));
                     for (int j = 0; j < channels_per_pixel && m_bitmap[row_index][col_index]; j++)
                         m_bitmap[row_index][col_index] = m_bitmap[row_index][col_index] && std::abs(color.rgba[j] * 255 - pixel_ptr[j]) < threshold;
                     col_index++;
@@ -374,13 +374,13 @@ struct simulated_map {
                 for(int r = 0; r < m_bitmap.size(); r++) {
                     for(int c = 0; c < m_bitmap[0].size(); c++) {
                         if(m_map_rooms[r][c] > 0)
-                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel, color::hsva(30 * ((m_map_rooms[r][c]/4)%12), 0.5 + 0.5*((m_map_rooms[r][c]/2)%2), 0.5 + 0.5*(m_map_rooms[r][c]%2)),false);
+                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, bitmap_height, channels_per_pixel, color::hsva(30 * ((m_map_rooms[r][c]/4)%12), 0.5 + 0.5*((m_map_rooms[r][c]/2)%2), 0.5 + 0.5*(m_map_rooms[r][c]%2)),false);
                     }
                 }
 
                 for (std::vector<std::pair<index_type,color>> const& p_buffer : draw_buffers) {
                     for (std::pair<index_type, color> t: p_buffer) {
-                        write_point_on_image(bitmap_data, visited, t.first[1], t.first[0], bitmap_width, channels_per_pixel, t.second);
+                        write_point_on_image(bitmap_data, visited, t.first[1], t.first[0], bitmap_width, bitmap_height, channels_per_pixel, t.second);
                     }
                 }
 
@@ -436,22 +436,38 @@ struct simulated_map {
                 for(int r = 0; r < m_bitmap.size(); r++) {
                     for(int c = 0; c < m_bitmap[0].size(); c++) {
                         if(m_map_rooms[r][c] > 0)
-                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel, color::hsva(30 * ((m_map_rooms[r][c]/4)%12), 0.5 + 0.5*((m_map_rooms[r][c]/2)%2), 0.5 + 0.5*(m_map_rooms[r][c]%2)),false);
+                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, bitmap_height, channels_per_pixel, color::hsva(30 * ((m_map_rooms[r][c]/4)%12), 0.5 + 0.5*((m_map_rooms[r][c]/2)%2), 0.5 + 0.5*(m_map_rooms[r][c]%2)),false);
                     }
                 }
 
 
+                std::set<std::pair<int,int>> already_visited;
+
                 for(auto & iter : m_waypoint_map)
                 {
                     std::vector<std::pair<int,int>> curr_vec = iter.second;
-                    int sumX = 0;
-                    int sumY = 0;
-                    for(std::pair<int,int>& c : curr_vec){
-                        sumX += c.first;
-                        sumY += c.second;
+                    if(already_visited.find(iter.first) == already_visited.end()) {
+                        already_visited.emplace(iter.first.first,iter.first.second);
+                        int sumX = 0;
+                        int sumY = 0;
+                        int count = 0;
+                        for (std::pair<int, int> &c: curr_vec) {
+                            sumX += c.first;
+                            sumY += c.second;
+                            count++;
+                        }
+                        try {
+                            std::vector<std::pair<int,int>> opposite_vec = m_waypoint_map.at({iter.first.second,iter.first.first});
+                            already_visited.emplace(iter.first.second,iter.first.first);
+                            for (std::pair<int, int> &c: opposite_vec) {
+                                sumX += c.first;
+                                sumY += c.second;
+                                count++;
+                            }
+                        }
+                        catch (const std::exception& e) { }
+                        write_point_on_image(bitmap_data, visited, sumY / count, sumX / count, bitmap_width, bitmap_height, channels_per_pixel, color(RED));
                     }
-                    write_point_on_image(bitmap_data, visited, sumY/curr_vec.size(), sumX/curr_vec.size(), bitmap_width, channels_per_pixel, color(RED));
-
                 }
 
                 stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
@@ -480,11 +496,11 @@ struct simulated_map {
             }
 
 
-            void write_point_on_image(unsigned char* pointer, std::vector<std::vector<bool>>& visited, int row, int col, int bitmap_width, int channels, color clr, bool visit = true) {
+            void write_point_on_image(unsigned char* pointer, std::vector<std::vector<bool>>& visited, int row, int col, int bitmap_width, int bitmap_height, int channels, color clr, bool visit = true) {
 
                 if(col >= 0 && col < m_bitmap[0].size() && row >= 0 && row < m_bitmap.size()) {
                     for (int j = 0; j < channels; j++) {
-                        (pointer + (channels * ((bitmap_width - row) * bitmap_width + col)))[j] = clr.rgba[j] * 255;
+                        (pointer + (channels * ((bitmap_height - row) * bitmap_width + col)))[j] = clr.rgba[j] * 255;
                     }
                     if(visit) visited[row][col] = true;
                 }
@@ -550,7 +566,7 @@ struct simulated_map {
                 for(int r = 0; r < m_bitmap.size(); r++) {
                     for(int c = 0; c < m_bitmap[0].size(); c++) {
                         if(m_map_rooms[r][c] > 0)
-                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, channels_per_pixel, color::hsva(30 * ((m_map_rooms[r][c]/4)%12), 0.5 + 0.5*((m_map_rooms[r][c]/2)%2), 0.5 + 0.5*(m_map_rooms[r][c]%2)),false);
+                            write_point_on_image(bitmap_data, visited, r, c, bitmap_width, bitmap_height, channels_per_pixel, color::hsva(30 * ((m_map_rooms[r][c]/4)%12), 0.5 + 0.5*((m_map_rooms[r][c]/2)%2), 0.5 + 0.5*(m_map_rooms[r][c]%2)),false);
                     }
                 }
 
