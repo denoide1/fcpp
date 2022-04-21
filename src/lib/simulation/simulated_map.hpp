@@ -14,6 +14,7 @@
 #include <stack>
 #include <queue>
 #include <set>
+#include <limits>
 #include <map>
 
 #include "lib/common/traits.hpp"
@@ -193,6 +194,7 @@ struct simulated_map {
 
                 calculate_waypoints(common::get_or<tags::obstacles>(t, ""));
 
+                nav_floyd_warshall();
                 //bellman_ford_algorithm(1);
 
             }
@@ -474,6 +476,8 @@ struct simulated_map {
 
                         waypoints_to_connect.emplace_back(border_indexes(iter.first.first,iter.first.second),waypoint(centroidX,centroidY));
 
+                        m_waypoints_list.emplace_back(std::pair<int,int>(iter.first.first,iter.first.second),std::pair<int,int>(centroidX,centroidY));
+
                         m_waypoints_per_rooms[iter.first.first].emplace_back(centroidX,centroidY);
                         m_waypoints_per_rooms[iter.first.second].emplace_back(centroidX,centroidY);
                         /*
@@ -487,33 +491,32 @@ struct simulated_map {
                     }
                 }
 
-                for (auto p : waypoints_to_connect) {
-                    int room_index1 = p.first.first;
-                    int room_index2 = p.first.second;
-                    m_navigation_graph[p.second] = std::vector<std::pair<real_t,std::pair<int,int>>>();
-                    for (auto p2 : waypoints_to_connect) {
-                        int room_index1p = p2.first.first;
-                        int room_index2p = p2.first.second;
+                m_navigation_graph = std::vector<std::vector<real_t>>(m_waypoints_list.size(),std::vector<real_t>(m_waypoints_list.size(), std::numeric_limits<real_t>::max()));
+
+                for (int i = 0; i < m_waypoints_list.size(); i++) {
+                    int room_index1 = m_waypoints_list[i].first.first;
+                    int room_index2 = m_waypoints_list[i].first.second;
+                    for (int j = 0; j < m_waypoints_list.size(); j++) {
+                        int room_index1p = m_waypoints_list[j].first.first;
+                        int room_index2p = m_waypoints_list[j].first.second;
                         if (room_index1 == room_index1p || room_index1 == room_index2p || room_index2 == room_index1p || room_index2 == room_index2p) {
-                            real_t distance = get_eu_distance(p.second.first,p2.second.first,p.second.second,p2.second.second);
-                            if (distance != 0)
-                                m_navigation_graph.at(p.second).emplace_back(distance, p2.second);
+                            real_t distance = get_eu_distance(m_waypoints_list[i].second.first,m_waypoints_list[j].second.first,m_waypoints_list[i].second.second,m_waypoints_list[j].second.second);
+                            m_navigation_graph[i][j] = distance;
                         }
                     }
                 }
+
+
 
                 /*
                 for(int r = 0; r < m_navigation_graph.size(); r++) {
                     for(int c = 0; c < m_navigation_graph[r].size(); c++) {
                         std::cout<<r<<"->"<<m_navigation_graph[r][c].first<<std::endl;
-
                     }
                 }
                  */
 
-
                 stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
-
 
                 for(int r = 0; r < m_bitmap.size(); r++) {
                     for(int c = 0; c < m_bitmap[0].size(); c++) {
@@ -670,10 +673,8 @@ struct simulated_map {
                             int n_y = point[1] + d[1];
 
                             if (n_x >= 0 && n_x < m_bitmap[0].size() && n_y >= 0 && n_y < m_bitmap.size()) {
-
                                 if(m_map_rooms[n_y][n_x] <= 0 && !m_bitmap[n_y][n_x])
                                     m_map_rooms[n_y][n_x] = -m_rooms_count;
-
                                 if (m_bitmap[n_y][n_x] || (m_map_rooms[n_y][n_x] > 0 && m_map_rooms[n_y][n_x] != m_rooms_count)) {
                                     if(check_obstacles(obstacles,centroid,n_x,n_y,1))
                                         obstacles.emplace_back(n_x,n_y);
@@ -730,6 +731,36 @@ struct simulated_map {
                     }
                     //end bfs
                 }
+            }
+
+            // Implementing floyd warshall algorithm
+            void nav_floyd_warshall() {
+                int nV = m_navigation_graph.size();
+                int i, j, k;
+
+                m_floyd_matrix = std::vector<std::vector<real_t>>(nV,std::vector<real_t>(nV));
+
+                for (i = 0; i < nV; i++)
+                    for (j = 0; j < nV; j++)
+                        m_floyd_matrix[i][j] = m_navigation_graph[i][j];
+
+                for (k = 0; k < nV; k++) {
+                    for (i = 0; i < nV; i++) {
+                        for (j = 0; j < nV; j++) {
+                            if (m_floyd_matrix[i][k] + m_floyd_matrix[k][j] < m_floyd_matrix[i][j])
+                                m_floyd_matrix[i][j] = m_floyd_matrix[i][k] + m_floyd_matrix[k][j];
+                        }
+                    }
+                }
+
+                for (k = 0; k < nV; k++) {
+                    for (i = 0; i < nV; i++) {
+                        std::cout<<m_floyd_matrix[k][i]<<" ";
+                    }
+                    std::cout<<std::endl;
+                }
+                std::cout<<"ciao"<<std::endl;
+
             }
 
 
@@ -844,7 +875,13 @@ struct simulated_map {
 
             std::map<int,std::vector<std::pair<int,int>>> m_waypoints_per_rooms;
 
-            std::map<std::pair<int,int>,std::vector<std::pair<real_t,std::pair<int,int>>>> m_navigation_graph;
+            using waypoints = std::pair<std::pair<int,int>,std::pair<int,int>>;
+
+            std::vector<waypoints> m_waypoints_list;
+
+            std::vector<std::vector<real_t>> m_navigation_graph;
+
+            std::vector<std::vector<real_t>> m_floyd_matrix;
 
 
         };
