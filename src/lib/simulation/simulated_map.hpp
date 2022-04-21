@@ -193,6 +193,8 @@ struct simulated_map {
 
                 calculate_waypoints(common::get_or<tags::obstacles>(t, ""));
 
+                //bellman_ford_algorithm(1);
+
             }
 
             //! @brief Returns the position of the closest empty space starting from node_position
@@ -418,14 +420,8 @@ struct simulated_map {
                                 if (n_x >= 0 && n_x < m_map_rooms[0].size() && n_y >= 0 && n_y < m_map_rooms.size() && !m_bitmap[n_y][n_x]) {
                                     int neighbour_id = m_map_rooms[n_y][n_x];
                                     if (current_cell_id != neighbour_id) {
-                                        try {
-                                            m_waypoint_map.at({current_cell_id, neighbour_id}).emplace_back(n_x, n_y);
-                                        }
-                                        catch (const std::out_of_range &e) {
-                                            m_waypoint_map.emplace(std::pair<int, int>(current_cell_id, neighbour_id),
-                                                                   std::vector<std::pair<int, int>>());
-                                            m_waypoint_map.at({current_cell_id, neighbour_id}).emplace_back(n_x, n_y);
-                                        }
+                                        m_waypoint_map.insert(std::pair<std::pair<int,int>,std::vector<std::pair<int,int>>>(std::pair<int,int>(current_cell_id, neighbour_id),std::vector<std::pair<int, int>>()));
+                                        m_waypoint_map.at({current_cell_id, neighbour_id}).emplace_back(n_x, n_y);
                                     }
                                 }
                             }
@@ -442,6 +438,12 @@ struct simulated_map {
 
 
                 std::set<std::pair<int,int>> already_visited;
+                //m_navigation_graph = std::vector<std::vector<std::pair<int,std::pair<int,int>>>>(m_rooms_count);
+
+                using border_indexes = std::pair<int,int>;
+                using waypoint = std::pair<int,int>;
+
+                std::vector<std::pair<border_indexes,waypoint>> waypoints_to_connect;
 
                 for(auto & iter : m_waypoint_map)
                 {
@@ -466,12 +468,59 @@ struct simulated_map {
                             }
                         }
                         catch (const std::exception& e) { }
-                        write_point_on_image(bitmap_data, visited, sumY / count, sumX / count, bitmap_width, bitmap_height, channels_per_pixel, color(RED));
+
+                        int centroidX = sumX / count;
+                        int centroidY = sumY / count;
+
+                        waypoints_to_connect.emplace_back(border_indexes(iter.first.first,iter.first.second),waypoint(centroidX,centroidY));
+
+                        m_waypoints_per_rooms[iter.first.first].emplace_back(centroidX,centroidY);
+                        m_waypoints_per_rooms[iter.first.second].emplace_back(centroidX,centroidY);
+                        /*
+                        m_navigation_graph.insert(std::pair<int,std::vector<std::pair<int,std::pair<int,int>>>>(iter.first.first,std::vector<std::pair<int,std::pair<int,int>>>()));
+                        m_navigation_graph.at(iter.first.first).emplace_back(std::pair<int,std::pair<int,int>>(iter.first.second,std::pair<int,int>(centroidX,centroidY)));
+                        m_navigation_graph.insert(std::pair<int,std::vector<std::pair<int,std::pair<int,int>>>>(iter.first.second,std::vector<std::pair<int,std::pair<int,int>>>()));
+                        m_navigation_graph.at(iter.first.second).emplace_back(std::pair<int,std::pair<int,int>>(iter.first.first,std::pair<int,int>(centroidX,centroidY)));
+                        write_point_on_image(bitmap_data, visited, centroidY, centroidX, bitmap_width, bitmap_height, channels_per_pixel, color(RED));
+                        */
+
                     }
                 }
 
+                for (auto p : waypoints_to_connect) {
+                    int room_index1 = p.first.first;
+                    int room_index2 = p.first.second;
+                    m_navigation_graph[p.second] = std::vector<std::pair<real_t,std::pair<int,int>>>();
+                    for (auto p2 : waypoints_to_connect) {
+                        int room_index1p = p2.first.first;
+                        int room_index2p = p2.first.second;
+                        if (room_index1 == room_index1p || room_index1 == room_index2p || room_index2 == room_index1p || room_index2 == room_index2p) {
+                            real_t distance = get_eu_distance(p.second.first,p2.second.first,p.second.second,p2.second.second);
+                            if (distance != 0)
+                                m_navigation_graph.at(p.second).emplace_back(distance, p2.second);
+                        }
+                    }
+                }
+
+                /*
+                for(int r = 0; r < m_navigation_graph.size(); r++) {
+                    for(int c = 0; c < m_navigation_graph[r].size(); c++) {
+                        std::cout<<r<<"->"<<m_navigation_graph[r][c].first<<std::endl;
+
+                    }
+                }
+                 */
+
+
                 stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
 
+
+                for(int r = 0; r < m_bitmap.size(); r++) {
+                    for(int c = 0; c < m_bitmap[0].size(); c++) {
+                            std::cout<<m_map_rooms[r][c];
+                    }
+                    std::cout<<std::endl;
+                }
 
                 /*
                 for(int r = 0; r < m_bitmap.size(); r++) {
@@ -494,7 +543,6 @@ struct simulated_map {
                 return point_number;
 
             }
-
 
             void write_point_on_image(unsigned char* pointer, std::vector<std::vector<bool>>& visited, int row, int col, int bitmap_width, int bitmap_height, int channels, color clr, bool visit = true) {
 
@@ -685,7 +733,6 @@ struct simulated_map {
             }
 
 
-
             template <typename obstacle_type, typename obstacle_arg>
             std::array<int,2> start_it_dfs(std::vector<std::vector<index_type>>& closest_map, std::vector<std::vector<obstacle_type>>& obstacles_map, std::function<bool(int,int,obstacle_type,obstacle_arg)> predicate, std::vector<std::vector<bool>>& visited, int row_index, int column_index) {
 
@@ -794,6 +841,10 @@ struct simulated_map {
             std::vector<std::vector<int>> m_map_rooms;
 
             std::map<std::pair<int,int>,std::vector<std::pair<int,int>>> m_waypoint_map;
+
+            std::map<int,std::vector<std::pair<int,int>>> m_waypoints_per_rooms;
+
+            std::map<std::pair<int,int>,std::vector<std::pair<real_t,std::pair<int,int>>>> m_navigation_graph;
 
 
         };
