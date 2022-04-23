@@ -221,6 +221,36 @@ struct simulated_map {
                 return m_bitmap[index[1]][index[0]];
             }
 
+            //! @brief Returns a path, from a start to a finish, composed of waypoints, which is obstacle free
+            std::vector<std::pair<int,int>> get_path(position_type start, position_type end) {
+
+                real_t best = std::numeric_limits<real_t>::max();
+                std::pair<int,int> minR1, minR2;
+
+                auto room1_w_list = m_waypoints_per_rooms[m_map_rooms[start[1]][start[0]]];
+                auto room2_w_list = m_waypoints_per_rooms[m_map_rooms[end[1]][end[0]]];
+
+                for (std::pair<int,int> first_waypoint : room1_w_list) {
+                    for (std::pair<int,int> second_waypoint : room2_w_list) {
+                        real_t previous_best = best;
+                        best = std::min(best,
+                                        get_eu_distance(start[0],first_waypoint.first, start[1],first_waypoint.second) +
+                                        get_eu_distance(first_waypoint.first,second_waypoint.first,first_waypoint.second,second_waypoint.second) +
+                                        get_eu_distance(second_waypoint.first, end[0], second_waypoint.second, end[1]));
+                        if (previous_best > best) {
+                            minR1 = first_waypoint;
+                            minR2 = second_waypoint;
+                        }
+                    }
+                }
+
+                std::vector<std::pair<int,int>> to_ret;
+                to_ret.emplace_back(minR1);
+                to_ret.emplace_back(minR2);
+
+                return to_ret;
+            }
+
           private: // implementation details
 
             //! @brief Type for representing a bitmap index.
@@ -518,12 +548,6 @@ struct simulated_map {
 
                 stbi_write_jpg("debugPoints.jpg", bitmap_width, bitmap_height, 3, bitmap_data, 100);
 
-                for(int r = 0; r < m_bitmap.size(); r++) {
-                    for(int c = 0; c < m_bitmap[0].size(); c++) {
-                            std::cout<<m_map_rooms[r][c];
-                    }
-                    std::cout<<std::endl;
-                }
 
                 /*
                 for(int r = 0; r < m_bitmap.size(); r++) {
@@ -752,16 +776,8 @@ struct simulated_map {
                         }
                     }
                 }
-
-                for (k = 0; k < nV; k++) {
-                    for (i = 0; i < nV; i++) {
-                        std::cout<<m_floyd_matrix[k][i]<<" ";
-                    }
-                    std::cout<<std::endl;
-                }
-                std::cout<<"ciao"<<std::endl;
-
             }
+
 
 
             template <typename obstacle_type, typename obstacle_arg>
