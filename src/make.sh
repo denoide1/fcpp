@@ -131,8 +131,9 @@ function mkdoc() {
         mkdir doc
     fi
     echo -e "\033[4mdoxygen Doxyfile\033[0m" >&2
-    doxygen Doxyfile 2>&1 | grep -v "Generating docs\|\.\.\.\|Searching for" | tee tmpdoc.err | grep -v "is not documented.$"
+    doxygen Doxyfile 2>&1 | grep -v "Generating docs\|\.\.\.\|Searching for" | tee tmpdoc.err | grep -v "is not documented.$" | sed 's|^.*/fcpp/src/lib/|- |;s|: warning: |: |' | sed -E 's|:([0-9 ]):|: \1:|;s|:([0-9 ][0-9 ]):|: \1:|;s|:([0-9 ][0-9 ][0-9 ]):|: \1:|;s|:([0-9 ]*):|, line\1:|'
     ndoc=`cat tmpdoc.err | grep "is not documented.$" | wc -l | tr -cd '0-9'`
+    nerr=`cat tmpdoc.err | grep '/fcpp/src/lib/' | wc -l | tr -cd '0-9'`
     if [ $ndoc -gt 0 ]; then
         cat tmpdoc.err | grep "is not documented" | sed 's|^.*/fcpp/src/lib/|- |;s|: warning: |: |;s| is not documented.||' | sed -E 's|:([0-9 ]):|: \1:|;s|:([0-9 ][0-9 ]):|: \1:|;s|:([0-9 ][0-9 ][0-9 ]):|: \1:|;s|:([0-9 ]*):|, line\1:|' | sort | uniq > tmpdoc2.err
         mv tmpdoc2.err tmpdoc.err
@@ -140,13 +141,18 @@ function mkdoc() {
         echo -e "\033[1m$ndoc items are not documented:\033[0m" >&2
         cat tmpdoc.err
     fi
+    if [ $nerr -gt 0 ]; then
+        exitcodes=( ${exitcodes[@]} $nerr )
+        failcmd="\033[4mdoxygen Doxyfile\033[0m"
+        errored=( "${errored[@]}" "$failcmd" )
+    fi
     rm tmpdoc.err
 }
 
 function parseopt() {
     i=0
     while [ "${1:0:1}" == "-" ]; do
-        if [ "${1:0:2}" == "-O" ]; then
+        if [ "$1" == "-O" ]; then
             btype="Release"
         else
             copts="$copts --copt=$1"
@@ -246,7 +252,7 @@ function cmake_finderx() {
 
 function cmake_builderx() {
     reporter cmake -S ./ -B ./bin -G "$platform Makefiles" -DCMAKE_BUILD_TYPE=$btype $opts "$cmakeopts"
-    if [ "$platform" == Unix ]; then
+    if which nproc 2>/dev/null >&2; then
         opt="-j `nproc`"
     fi
     if [ "$1" != "" ]; then
@@ -281,6 +287,7 @@ while [ "$1" != "" ]; do
         shift 1
         gcc=$(which $(compgen -c gcc- | grep "^gcc-[1-9][0-9]*$" | uniq))
         gpp=$(which $(compgen -c g++- | grep "^g++-[1-9][0-9]*$" | uniq))
+        opts="$opts -DCMAKE_C_COMPILER=$gcc -DCMAKE_CXX_COMPILER=$gpp"
         export BAZEL_USE_CPP_ONLY_TOOLCHAIN=1
         export CC="$gpp"
         export CXX="$gpp"
@@ -608,6 +615,20 @@ while [ "$1" != "" ]; do
             builder build $alltargets
             builder test $alltargets
         fi
+        quitter
+    elif [ "$1" == "multiall" ]; then
+        shift 1
+        $0 clean
+        reporter $0 test all
+        $0 clean
+        reporter $0 gcc test all
+        $0 bazel clean
+        $0 bazel test all
+        reporter $0 bazel test all
+        $0 bazel clean
+        $0 bazel gcc test all
+        reporter $0 bazel gcc test all
+        reporter $0 doc
         quitter
     else
         usage

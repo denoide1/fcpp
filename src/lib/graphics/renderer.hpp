@@ -29,17 +29,21 @@
 namespace fcpp {
     namespace internal {
         //! @brief Supported pointers to vertex buffers.
-        enum class vertex : char { singleLine, star, plane, grid, SIZE };
+        enum class vertex : char { singleLine, star, plane, grid, rectangle, SIZE };
 
         //! @brief Supported pointers to index buffers.
-        enum class index : char { plane, gridNorm, gridHigh, SIZE };
+        enum class index : char { plane, gridNorm, gridHigh, rectangle, SIZE };
 
         //! @brief Glyph struct.
         struct glyph {
-            unsigned int textureID;  // ID handle of the glyph texture
-            glm::ivec2   size;       // size of glyph
-            glm::ivec2   bearing;    // offset from baseline to left/top of glyph
-            unsigned int advance;    // offset to advance to next glyph
+            //! @brief ID handle of the glyph texture.
+            unsigned int textureID;
+            //! @brief Size of glyph.
+            glm::ivec2   size;
+            //! @brief Offset from baseline to left/top of glyph.
+            glm::ivec2   bearing;
+            //! @brief Offset to advance to next glyph.
+            unsigned int advance;
         };
 
         //! @brief Renderer class; it has the responsability of calling OpenGL directives.
@@ -77,6 +81,9 @@ namespace fcpp {
 
             //! @brief It draws the specified text in the specified window coordinates, scale and color.
             void drawText(std::string text, float x, float y, float scale) const;
+
+            //! @brief It draws the defined rectangle, given the information on color(s) and position
+            void drawRectangle(float x, float y, float a, float b) const;
 
             //! @brief Returns the aspect ratio of the window.
             float getAspectRatio();
@@ -288,6 +295,9 @@ namespace fcpp {
 
             //! @brief The background color.
             glm::vec4 m_background;
+
+            //! @brief The rectangle color.
+            glm::vec4 m_rectangle_col;
 
             //! @brief The foreground color.
             glm::vec4 m_foreground;

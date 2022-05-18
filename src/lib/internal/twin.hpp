@@ -37,6 +37,7 @@ class twin<T, true> {
 
     //! @name constructors
     //! @{
+
     //! @brief Default constructor.
     twin() = default;
 
@@ -53,6 +54,7 @@ class twin<T, true> {
 
     //! @name assignment operators
     //! @{
+
     //! @brief Copy assignment.
     twin& operator=(twin const&) = default;
 
@@ -91,6 +93,18 @@ class twin<T, true> {
         return m_data;
     }
 
+    //! @brief Serialises the content from/to a given input/output stream.
+    template <typename S>
+    S& serialize(S& s) {
+        return s & m_data;
+    }
+
+    //! @brief Serialises the content from/to a given input/output stream (const overload).
+    template <typename S>
+    S& serialize(S& s) const {
+        return s << m_data;
+    }
+
   private:
     //! @brief The content of the class.
     T m_data;
@@ -106,6 +120,7 @@ class twin<T, false> {
 
     //! @name constructors
     //! @{
+
     //! @brief Default constructor.
     twin() = default;
 
@@ -122,6 +137,7 @@ class twin<T, false> {
 
     //! @name assignment operators
     //! @{
+
     //! @brief Copy assignment.
     twin& operator=(twin const&) = default;
 
@@ -159,6 +175,18 @@ class twin<T, false> {
     //! @brief Const access to the second element.
     T const& second() const {
         return m_second;
+    }
+
+    //! @brief Serialises the content from/to a given input/output stream.
+    template <typename S>
+    S& serialize(S& s) {
+        return s & m_first & m_second;
+    }
+
+    //! @brief Serialises the content from/to a given input/output stream (const overload).
+    template <typename S>
+    S& serialize(S& s) const {
+        return s << m_first << m_second;
     }
 
   private:
