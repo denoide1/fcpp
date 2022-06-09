@@ -5,12 +5,11 @@
 #include "lib/component/base.hpp"
 #include "lib/simulation/simulated_map.hpp"
 
-#include "./external/stb_image/stb_image.h"
-
 #include "lib/data/vec.hpp"
 #include <fstream>
 #include <cstdio>
 #include <vector>
+
 
 using namespace fcpp;
 using namespace component::tags;
@@ -48,8 +47,11 @@ TEST(SimulatedMapTest, CollisionTest) {
 
    test_bitmap.write((char *)bitmap.data(),bitmap.size());
    test_bitmap.close();
-   //start analysis
-   combo1::net net{common::make_tagged_tuple<obstacles, area_min, area_max>("bitmap_test.png", make_vec(0,0), make_vec(40,40))};
+
+   map_navigator m = map_navigator("bitmap_test.png", color(BLACK), 0.8);
+
+    //start analysis
+   combo1::net net{common::make_tagged_tuple<map_navigator_obj, area_min, area_max>(m, make_vec(0,0), make_vec(4,4))};
    EXPECT_TRUE(net.is_obstacle(make_vec(0.82,32.36)));
    EXPECT_FALSE(net.is_obstacle(make_vec(11.45,33.58)));
    EXPECT_EQ(net.closest_obstacle(make_vec(1.78,23.78)), make_vec(1.78,30));
