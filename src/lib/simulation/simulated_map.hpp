@@ -16,6 +16,7 @@
 #include <set>
 #include <limits>
 #include <map>
+#include <stb_image_write.h>
 
 #include "lib/common/traits.hpp"
 #include "lib/component/base.hpp"
@@ -91,6 +92,20 @@ public:
     map_navigator(const std::string& path = "", color obstacle_color = color(BLACK), real_t obstacles_color_threshold = 0.5) {
 
         load_bitmap(path,obstacle_color,obstacles_color_threshold);
+
+        /*
+        //load image to draw results (debug)
+        int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index = 0;
+        std::string real_path;
+#if _WIN32
+        real_path = std::string(".\\textures\\").append(path);
+#else
+        //real_path = std::string("./textures/").append(path);
+        real_path = path;
+#endif
+        unsigned char *p = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height,&channels_per_pixel, 0);
+        */
+
         m_map_rooms = std::vector<std::vector<std::vector<int>>>(m_bitmap.size(),std::vector<std::vector<int>>(m_bitmap[0].size(),std::vector<int>(2, 0)));
         auto rooms_function = std::function<bool(int, int, int, int, std::vector<std::vector<bool>> &)>(
                 [&](int x, int y, int bitmap, int obstacle,
@@ -128,11 +143,39 @@ public:
             fill_closest_rooms(m_rooms_closest, m_map_rooms, rooms_function);
             red_point = start_room_subdivision_rooms(m_rooms_closest, m_map_rooms,std::function<bool(int, int, int, int)>([&](int x, int y, int element, int arg) {return element > 0 || (element == 0 &&m_bitmap[y][x]);}),path,false);
             m_room_iteration_count++;
-        } while (red_point != 0);
+        } while (red_point > 11);
 
         fill_closest_rooms(m_rooms_closest, m_map_rooms, rooms_function_no_obstacle);
         fill_empty_spaces(path);
+
+        /* debug
+        //write rooms
+        for(int r = 0; r < m_bitmap.size(); r++) {
+            for(int c = 0; c < m_bitmap[0].size(); c++) {
+                if (m_map_rooms[r][c][0] > 0) {
+                    write_point_on_image(p, r, c, bitmap_width, bitmap_height, channels_per_pixel,color::hsva(30 * ((m_map_rooms[r][c][0] / 4) % 12),0.5 + 0.5 * ((m_map_rooms[r][c][0] / 2) % 2),0.5 + 0.5 * (m_map_rooms[r][c][0] % 2)), false);
+                }
+            }
+        }
+
+        if(!path.empty())
+            stbi_write_png("debugPoints.png", bitmap_width, bitmap_height, channels_per_pixel, p, bitmap_width * channels_per_pixel);
+
+         */
         calculate_waypoints(path);
+
+        /* debug
+        //write waypoints
+        for(waypoints p2 : m_waypoints_list) {
+            write_point_on_image(p, p2.second[1], p2.second[0], bitmap_width, bitmap_height, channels_per_pixel, color(RED), false);
+        }
+
+        if(!path.empty())
+            stbi_write_png("debugPoints.png", bitmap_width, bitmap_height, channels_per_pixel, p, bitmap_width * channels_per_pixel);
+
+        stbi_image_free(p);
+         */
+
         nav_floyd_warshall();
     }
 
@@ -143,6 +186,51 @@ public:
     bool is_obstacle_at(index_type index) {
         return m_bitmap[index[1]][index[0]];
     }
+
+    index_type get_bitmap_size() {
+        return {m_bitmap[0].size(), m_bitmap.size()};
+    }
+
+    index_type path_to(index_type source, index_type dest) {
+
+        real_t best = std::numeric_limits<real_t>::max();
+        index_type minR1;
+
+        for (int i = 0; i < get_rooms_at(source).size(); i++) {
+            if (i > 0 && get_rooms_at(source)[i] == 0) continue;
+
+            for (int j = 0; j < get_rooms_at(dest).size(); j++) {
+                if (j > 0 && get_rooms_at(dest)[j] == 0) continue;
+                int p = get_rooms_at(source)[i];
+                int q = get_rooms_at(dest)[j];
+
+                auto room1_w_list = get_waypoints_for(p);
+                auto room2_w_list = get_waypoints_for(q);
+
+                if (p == q) return dest;
+
+                for (index_type first_waypoint: room1_w_list) {
+                    for (index_type last_waypoint: room2_w_list) {
+                        real_t distance = get_distance(source, first_waypoint, last_waypoint, dest);
+                        if (distance <= best) {
+                            best = distance;
+                            minR1 = first_waypoint;
+                        }
+                    }
+                }
+            }
+        }
+        return minR1;
+    }
+
+    bool is_empty() {
+        return empty;
+    }
+
+private:
+
+    //! @brief Type for representing a bfs queue pair of point and its source point from which was generated.
+    using matrix_pair_type = std::pair<index_type, index_type>;
 
     std::vector<int> get_rooms_at(index_type index) {
         return m_map_rooms[index[1]][index[0]];
@@ -158,27 +246,19 @@ public:
                get_eu_distance(last_waypoint[0], index_dest[0], last_waypoint[1], index_dest[1]);
     }
 
-    std::array<unsigned long,2> get_bitmap_size() {
-        return {m_bitmap[0].size(), m_bitmap.size()};
+    void write_point_on_image(unsigned char* pointer, int row, int col, int bitmap_width, int bitmap_height, int channels, color clr, bool visit = true) {
+        if(col >= 0 && col < m_bitmap[0].size() && row >= 0 && row < m_bitmap.size()) {
+            for (int j = 0; j < channels; j++) {
+                (pointer + (channels * ((bitmap_height-1 - row) * bitmap_width + col)))[j] = clr.rgba[j] * 255;
+            }
+        }
     }
-
-    /**
-   * @brief Matrix containing data to implements closest_space() and closest_obstacle()
-   *
-   * if a indexed position is empty it contains the nearest obstacle otherwise the nearest empty space position
-   */
-    //! @brief The dimensionality of the space.
-
-
-private:
-
-    //! @brief Type for representing a bfs queue pair of point and its source point from which was generated.
-    using matrix_pair_type = std::pair<index_type, index_type>;
 
     //! @brief Fills m_bitmap by reading and parsing a stored bitmap given the bitmap file path
     void load_bitmap(std::string const &path, color const &color, real_t threshold) {
         if (path.empty()) {
             m_bitmap = {{false}};
+            empty = true;
             return;
         }
         int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index = 0;
@@ -190,16 +270,15 @@ private:
         real_path = std::string("./textures/").append(path);
         //real_path = path;
 #endif
-        unsigned char *bitmap_data = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height,
-                                               &channels_per_pixel, 0);
+        unsigned char *bitmap_data = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height,&channels_per_pixel, 0);
+        unsigned char *copy_ptr = bitmap_data;
         if (bitmap_data == nullptr) throw std::runtime_error("Error in image loading");
 
-        row_index = bitmap_height - 1;
-        m_bitmap = std::vector<std::vector<bool>>(bitmap_height,
-                                                  std::vector<bool>(bitmap_width, true));
+        row_index = bitmap_height-1;
+        m_bitmap = std::vector<std::vector<bool>>(bitmap_height,std::vector<bool>(bitmap_width, true));
 
         while (row_index >= 0) {
-            unsigned char *pixel_ptr = (bitmap_data + (channels_per_pixel * ((bitmap_height - row_index) * bitmap_width + col_index)));
+            unsigned char *pixel_ptr = (bitmap_data + (channels_per_pixel * ((bitmap_height-1 - row_index) * bitmap_width + col_index)));
             for (int j = 0; j < channels_per_pixel && m_bitmap[row_index][col_index]; j++)
                 m_bitmap[row_index][col_index] = m_bitmap[row_index][col_index] && std::abs(color.rgba[j] * 255 - pixel_ptr[j]) < threshold;
             col_index++;
@@ -208,25 +287,14 @@ private:
                 col_index = 0;
             }
         }
-
-        stbi_image_free(bitmap_data);
     }
 
     template<typename obstacle_type, typename obstacle_arg>
     int start_room_subdivision(std::vector<std::vector<index_type>> &closest_map,std::vector<std::vector<obstacle_type>> &obstacles_map,std::function<bool(int, int, obstacle_type, obstacle_arg)> predicate,std::string const &path, bool noroom = false) {
 
         constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},{-1, -1, 3}}};
-        int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index;
-        std::string real_path;
+        int row_index, col_index;
         int point_number = 0;
-#if _WIN32
-        real_path = std::string(".\\textures\\").append(path);
-#else
-        real_path = std::string("./textures/").append(path);
-        //real_path = path;
-#endif
-        unsigned char *bitmap_data = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height,&channels_per_pixel, 3);
-        if (bitmap_data == nullptr) throw std::runtime_error("Error in image loading");
 
         std::vector<std::vector<bool>> visited(m_bitmap.size(),std::vector<bool>(m_bitmap[0].size()));
         std::vector<std::vector<std::pair<index_type, color>>> draw_buffers;
@@ -236,7 +304,7 @@ private:
         draw_buffers.emplace_back();
         draw_buffers.emplace_back();
 
-        row_index = bitmap_height - 1;
+        row_index = m_bitmap.size() - 1;
         col_index = 0;
 
         while (row_index >= 0) {
@@ -279,16 +347,13 @@ private:
                 }
             }
             col_index++;
-            if (col_index == bitmap_width) {
+            if (col_index == m_bitmap[0].size()) {
                 row_index--;
                 col_index = 0;
             }
         }
 
-        if (!noroom)
-            create_rooms(predicate);
-
-        stbi_image_free(bitmap_data);
+        if (!noroom) create_rooms(predicate);
 
         return point_number;
 
@@ -297,21 +362,12 @@ private:
     template<typename obstacle_type, typename obstacle_arg>
     int start_room_subdivision_rooms(std::vector<std::vector<index_type>> &closest_map,std::vector<std::vector<std::vector<obstacle_type>>> &obstacles_map,std::function<bool(int, int, obstacle_type,obstacle_arg)> predicate,std::string const &path, bool noroom = false) {
         constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},{-1, -1, 3}}};
-        int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index;
+        int row_index, col_index;
         std::string real_path;
         int point_number = 0;
-#if _WIN32
-        real_path = std::string(".\\textures\\").append(path);
-#else
-        real_path = std::string("./textures/").append(path);
-        //real_path = path;
-#endif
-        unsigned char *bitmap_data = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height,
-                                               &channels_per_pixel, 3);
-        if (bitmap_data == nullptr) throw std::runtime_error("Error in image loading");
 
-        std::vector<std::vector<bool>> visited(m_bitmap.size(),
-                                               std::vector<bool>(m_bitmap[0].size()));
+
+        std::vector<std::vector<bool>> visited(m_bitmap.size(),std::vector<bool>(m_bitmap[0].size()));
         std::vector<std::vector<std::pair<index_type, color>>> draw_buffers;
         std::vector<std::pair<index_type, int>> point_values;
 
@@ -319,7 +375,7 @@ private:
         draw_buffers.emplace_back();
         draw_buffers.emplace_back();
 
-        row_index = bitmap_height - 1;
+        row_index = m_bitmap.size() - 1;
         col_index = 0;
 
         while (row_index >= 0) {
@@ -330,8 +386,7 @@ private:
                     row_index < obstacles_map.size() &&
                     !predicate(col_index, row_index, obstacles_map[row_index][col_index][0], 0)) {
 
-                    int distance = get_distance(closest_map[row_index][col_index], col_index,
-                                                row_index);
+                    int distance = get_distance(closest_map[row_index][col_index], col_index,row_index);
                     int n_distance;
                     bool max = true;
                     for (std::array<int, 3> const &d: deltas) {
@@ -353,33 +408,26 @@ private:
                         point_number++;
 
                         if (!visited[row_index][col_index]) {
-                            std::array<int, 2> b = start_it_dfs_rooms(closest_map, obstacles_map,
-                                                                      predicate,
-                                                                      visited, row_index,
-                                                                      col_index);
+                            std::array<int, 2> b = start_it_dfs_rooms(closest_map, obstacles_map,predicate,visited, row_index,col_index);
                             if (b[0] > 0 && b[1] > 1) {
                                 index_type b2;
                                 b2[0] = b[0];
                                 b2[1] = b[1];
                                 draw_buffers[1].emplace_back(b2, color(BLUE));
-                                m_centroids.emplace(get_distance(b2, closest_map[b2[1]][b2[0]][0],
-                                                                 closest_map[b2[1]][b2[0]][1]), b);
+                                m_centroids.emplace(get_distance(b2, closest_map[b2[1]][b2[0]][0], closest_map[b2[1]][b2[0]][1]), b);
                             }
                         }
                     }
                 }
             }
             col_index++;
-            if (col_index == bitmap_width) {
+            if (col_index == m_bitmap[0].size()) {
                 row_index--;
                 col_index = 0;
             }
         }
 
-        if (!noroom)
-            create_rooms(predicate);
-
-        stbi_image_free(bitmap_data);
+        if (!noroom) create_rooms(predicate);
 
         return point_number;
 
@@ -387,24 +435,9 @@ private:
 
 
     int calculate_waypoints(std::string const &path) {
-
-        constexpr static std::array<std::array<int, 3>, 8> deltas = {
-                {{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},
-                 {-1, -1, 3}}};
-        int bitmap_width, bitmap_height, channels_per_pixel;
-        std::vector<std::vector<bool>> visited(m_bitmap.size(),
-                                               std::vector<bool>(m_bitmap[0].size()));
-        std::string real_path;
+        constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},{-1, -1, 3}}};
+        std::vector<std::vector<bool>> visited(m_bitmap.size(),std::vector<bool>(m_bitmap[0].size()));
         int point_number = 0;
-#if _WIN32
-        real_path = std::string(".\\textures\\").append(path);
-#else
-        real_path = std::string("./textures/").append(path);
-        //real_path = path;
-#endif
-        unsigned char *bitmap_data = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height,
-                                               &channels_per_pixel, 3);
-        if (bitmap_data == nullptr) throw std::runtime_error("Error in image loading");
 
         for (int r = 0; r < m_map_rooms.size(); r++) {
             for (int c = 0; c < m_map_rooms[0].size(); c++) {
@@ -416,20 +449,14 @@ private:
                         if (n_x >= 0 && n_x < m_map_rooms[0].size() && n_y >= 0 &&
                             n_y < m_map_rooms.size() && !m_bitmap[n_y][n_x]) {
                             int neighbour_id = m_map_rooms[n_y][n_x][0];
-                            if (current_cell_id != neighbour_id) {
-                                m_waypoint_map.insert(
-                                        std::pair<std::pair<int, int>, std::vector<std::pair<int, int>>>(
-                                                std::pair<int, int>(current_cell_id, neighbour_id),
-                                                std::vector<std::pair<int, int>>()));
-                                m_waypoint_map.at({current_cell_id, neighbour_id}).emplace_back(n_x,
-                                                                                                n_y);
+                            if (current_cell_id != neighbour_id) {m_waypoint_map.insert(std::pair<std::pair<int, int>, std::vector<std::pair<int, int>>>(std::pair<int, int>(current_cell_id, neighbour_id),std::vector<std::pair<int, int>>()));
+                                m_waypoint_map.at({current_cell_id, neighbour_id}).emplace_back(n_x,n_y);
                             }
                         }
                     }
                 }
             }
         }
-
 
         std::set<std::pair<int, int>> already_visited;
         //m_navigation_graph = std::vector<std::vector<std::pair<int,std::pair<int,int>>>>(m_rooms_count);
@@ -453,21 +480,27 @@ private:
                     m_map_rooms[c.second][c.first][0] = iter.first.first;
                     m_map_rooms[c.second][c.first][1] = iter.first.second;
                     for (int i = 1; i < m_room_iteration_count + 1; i++) {
-                        m_map_rooms[c.second][c.first + i][0] = iter.first.first;
-                        m_map_rooms[c.second][c.first + i][1] = iter.first.second;
-                        m_map_rooms[c.second][c.first - i][0] = iter.first.first;
-                        m_map_rooms[c.second][c.first - i][1] = iter.first.second;
-                        m_map_rooms[c.second + i][c.first][0] = iter.first.first;
-                        m_map_rooms[c.second + i][c.first][1] = iter.first.second;
-                        m_map_rooms[c.second - i][c.first][0] = iter.first.first;
-                        m_map_rooms[c.second - i][c.first][1] = iter.first.second;
+                        if(c.first + i < m_map_rooms[0].size()) {
+                            m_map_rooms[c.second][c.first + i][0] = iter.first.first;
+                            m_map_rooms[c.second][c.first + i][1] = iter.first.second;
+                        }
+                        if(c.first - i >= 0) {
+                            m_map_rooms[c.second][c.first - i][0] = iter.first.first;
+                            m_map_rooms[c.second][c.first - i][1] = iter.first.second;
+                        }
+                        if(c.second + i < m_map_rooms.size()) {
+                            m_map_rooms[c.second + i][c.first][0] = iter.first.first;
+                            m_map_rooms[c.second + i][c.first][1] = iter.first.second;
+                        }
+                        if(c.second - i >= 0) {
+                            m_map_rooms[c.second - i][c.first][0] = iter.first.first;
+                            m_map_rooms[c.second - i][c.first][1] = iter.first.second;
+                        }
                     }
-
                     count++;
                 }
                 try {
-                    std::vector<std::pair<int, int>> opposite_vec = m_waypoint_map.at(
-                            {iter.first.second, iter.first.first});
+                    std::vector<std::pair<int, int>> opposite_vec = m_waypoint_map.at({iter.first.second, iter.first.first});
                     already_visited.emplace(iter.first.second, iter.first.first);
                     for (std::pair<int, int> &c: opposite_vec) {
                         sumX += c.first;
@@ -475,14 +508,22 @@ private:
                         m_map_rooms[c.second][c.first][0] = iter.first.first;
                         m_map_rooms[c.second][c.first][1] = iter.first.second;
                         for (int i = 1; i < m_room_iteration_count + 1; i++) {
-                            m_map_rooms[c.second][c.first + i][0] = iter.first.first;
-                            m_map_rooms[c.second][c.first + i][1] = iter.first.second;
-                            m_map_rooms[c.second][c.first - i][0] = iter.first.first;
-                            m_map_rooms[c.second][c.first - i][1] = iter.first.second;
-                            m_map_rooms[c.second + i][c.first][0] = iter.first.first;
-                            m_map_rooms[c.second + i][c.first][1] = iter.first.second;
-                            m_map_rooms[c.second - i][c.first][0] = iter.first.first;
-                            m_map_rooms[c.second - i][c.first][1] = iter.first.second;
+                            if(c.first + i < m_map_rooms[0].size()) {
+                                m_map_rooms[c.second][c.first + i][0] = iter.first.first;
+                                m_map_rooms[c.second][c.first + i][1] = iter.first.second;
+                            }
+                            if(c.first - i >= 0) {
+                                m_map_rooms[c.second][c.first - i][0] = iter.first.first;
+                                m_map_rooms[c.second][c.first - i][1] = iter.first.second;
+                            }
+                            if(c.second + i < m_map_rooms.size()) {
+                                m_map_rooms[c.second + i][c.first][0] = iter.first.first;
+                                m_map_rooms[c.second + i][c.first][1] = iter.first.second;
+                            }
+                            if(c.second - i >= 0) {
+                                m_map_rooms[c.second - i][c.first][0] = iter.first.first;
+                                m_map_rooms[c.second - i][c.first][1] = iter.first.second;
+                            }
                         }
                         count++;
                     }
@@ -492,16 +533,12 @@ private:
                 int centroidX = sumX / count;
                 int centroidY = sumY / count;
 
-                waypoints_to_connect.emplace_back(
-                        border_indexes(iter.first.first, iter.first.second),
-                        waypoint(centroidX, centroidY));
-
+                waypoints_to_connect.emplace_back(border_indexes(iter.first.first, iter.first.second),waypoint(centroidX, centroidY));
 
                 index_type n;
                 n[0] = centroidX;
                 n[1] = centroidY;
-                m_waypoints_list.emplace_back(
-                        std::pair<int, int>(iter.first.first, iter.first.second), n);
+                m_waypoints_list.emplace_back(std::pair<int, int>(iter.first.first, iter.first.second), n);
 
                 m_waypoints_per_rooms[iter.first.first].emplace_back(n);
                 m_waypoints_per_rooms[iter.first.second].emplace_back(n);
@@ -511,10 +548,7 @@ private:
             }
         }
 
-        m_navigation_graph = std::vector<std::vector<real_t>>(m_waypoints_list.size(),
-                                                              std::vector<real_t>(
-                                                                      m_waypoints_list.size(),
-                                                                      std::numeric_limits<real_t>::max()));
+        m_navigation_graph = std::vector<std::vector<real_t>>(m_waypoints_list.size(),std::vector<real_t>(m_waypoints_list.size(),std::numeric_limits<real_t>::max()));
 
         for (int i = 0; i < m_waypoints_list.size(); i++) {
             int room_index1 = m_waypoints_list[i].first.first;
@@ -525,20 +559,12 @@ private:
                 int room_index2p = m_waypoints_list[j].first.second;
                 if (room_index1 == room_index1p || room_index1 == room_index2p ||
                     room_index2 == room_index1p || room_index2 == room_index2p) {
-                    real_t distance = get_eu_distance(m_waypoints_list[i].second[0],
-                                                      m_waypoints_list[j].second[0],
-                                                      m_waypoints_list[i].second[1],
-                                                      m_waypoints_list[j].second[1]);
+                    real_t distance = get_eu_distance(m_waypoints_list[i].second[0],m_waypoints_list[j].second[0],m_waypoints_list[i].second[1],m_waypoints_list[j].second[1]);
                     m_navigation_graph[i][j] = distance;
                 }
-                //m_waypoint_index[m_waypoints_list[i].second] = j;
             }
         }
-
-        stbi_image_free(bitmap_data);
-
         return point_number;
-
     }
 
     int get_distance(index_type const &closest, int x, int y) {
@@ -565,9 +591,7 @@ private:
         return result <= k * std::sqrt(OBx * OBx + OBy * OBy);
     }
 
-    bool check_obstacles(std::vector<std::pair<real_t, real_t>> const &obstacles,
-                    std::array<int, 2> const &B,
-                    int x, int y, int k) {
+    bool check_obstacles(std::vector<std::pair<real_t, real_t>> const &obstacles,std::array<int, 2> const &B,int x, int y, int k) {
         for (std::pair<real_t, real_t> o: obstacles) {
             if (obstacle_blocking(B, o.first, o.second, x, y, k)) {
                 return false;
@@ -578,19 +602,7 @@ private:
 
 
     void fill_empty_spaces(std::string const &path) {
-        int bitmap_width, bitmap_height, channels_per_pixel, row_index, col_index;
-        std::string real_path;
-#if _WIN32
-        real_path = std::string(".\\textures\\").append(path);
-#else
-        real_path = std::string("./textures/").append(path);
-        //real_path = path;
-#endif
-        unsigned char *bitmap_data = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height,&channels_per_pixel, 3);
-        if (bitmap_data == nullptr) throw std::runtime_error("Error in image loading");
-
         std::vector<std::vector<bool>> visited(m_bitmap.size(),std::vector<bool>(m_bitmap[0].size()));
-
         for (int r = 0; r < m_map_rooms.size(); r++) {
             for (int c = 0; c < m_map_rooms[0].size(); c++) {
                 if (m_map_rooms[r][c][0] < 0 || (m_map_rooms[r][c][0] == 0 && !m_bitmap[r][c])) {
@@ -599,16 +611,13 @@ private:
                 }
             }
         }
-
     }
 
     //! @brief create rooms for navigations
     template<typename obstacle_type, typename obstacle_arg>
     void create_rooms(std::function<bool(int, int, obstacle_type, obstacle_arg)> predicate) {
 
-        constexpr static std::array<std::array<int, 3>, 8> deltas = {
-                {{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},
-                 {-1, -1, 3}}};
+        constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},{-1, -1, 3}}};
         //int rooms_count = 0;
 
         //dynamic queues vector with source queue
@@ -617,13 +626,17 @@ private:
 
         std::vector<std::array<int, 2>> filtered_centroids;
 
+        if (m_centroids.empty()) {
+            std::cerr<<"image map too small or too noisy to create rooms"<<std::endl;
+            //m_bitmap = {{false}};
+            return;
+        }
+
         int max_distance = m_centroids.top().first;
 
         for (int i = 0; i < m_centroids.size(); i++) {
             if (m_centroids.top().first >= max_distance / 2) {
-                filtered_centroids.emplace_back(
-                        std::array<int, 2>(
-                                {m_centroids.top().second[0], m_centroids.top().second[1]}));
+                filtered_centroids.emplace_back(std::array<int, 2>({m_centroids.top().second[0], m_centroids.top().second[1]}));
             }
             m_centroids.pop();
         }
@@ -634,8 +647,7 @@ private:
             queue.push({0, centroid});
             m_rooms.emplace_back();
             m_rooms_count++;
-            std::vector<std::vector<bool>> visited(m_map_rooms.size(),
-                                                   std::vector<bool>(m_map_rooms[0].size()));
+            std::vector<std::vector<bool>> visited(m_map_rooms.size(),std::vector<bool>(m_map_rooms[0].size()));
 
             //start bfs
             while (!queue.empty()) {
@@ -708,8 +720,7 @@ private:
                             while (i + d[2] >= queues.size()) queues.emplace_back();
                             size_t n_x = point[0] + d[0];
                             size_t n_y = point[1] + d[1];
-                            if (n_x >= 0 && n_x < obstacles_map[0].size() && n_y >= 0 &&
-                                n_y < obstacles_map.size())
+                            if (n_x >= 0 && n_x < obstacles_map[0].size() && n_y >= 0 && n_y < obstacles_map.size())
                                 queues[i + d[2]].push_back({{n_x, n_y}, elem.second});
                         }
                     }
@@ -724,12 +735,8 @@ private:
     //! @brief Fills m_closest by parsing the bitmap with two sequential bfs
     template<typename obstacle_type, typename obstacle_arg>
     void fill_closest_rooms(std::vector<std::vector<index_type>> &closest_map,std::vector<std::vector<std::vector<obstacle_type>>> &obstacles_map,std::function<bool(int, int, obstacle_type, obstacle_arg,std::vector<std::vector<bool>> &)> predicate) {
-        constexpr static std::array<std::array<int, 3>, 8> deltas = {
-                {{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},
-                 {-1, -1, 3}}};
-        closest_map = std::vector<std::vector<index_type>>(obstacles_map.size(),
-                                                           std::vector<index_type>(
-                                                                   obstacles_map[0].size()));
+        constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},{-1, -1, 3}}};
+        closest_map = std::vector<std::vector<index_type>>(obstacles_map.size(),std::vector<index_type>(obstacles_map[0].size()));
 
         for (int obstacle = 1; obstacle >= 0; obstacle--) {
             //dynamic queues vector with source queue
@@ -791,12 +798,7 @@ private:
 
 
     template<typename obstacle_type, typename obstacle_arg>
-    std::array<int, 2> start_it_dfs(std::vector<std::vector<index_type>> &closest_map,
-                                    std::vector<std::vector<obstacle_type>> &obstacles_map,
-                                    std::function<bool(int, int, obstacle_type,
-                                                       obstacle_arg)> predicate,
-                                    std::vector<std::vector<bool>> &visited, int row_index,
-                                    int column_index) {
+    std::array<int, 2> start_it_dfs(std::vector<std::vector<index_type>> &closest_map,std::vector<std::vector<obstacle_type>> &obstacles_map,std::function<bool(int, int, obstacle_type,obstacle_arg)> predicate,std::vector<std::vector<bool>> &visited, int row_index,int column_index) {
 
         constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},{-1, -1, 3}}};
         std::stack<std::pair<std::pair<size_t, size_t>, int>> stack;
@@ -859,9 +861,7 @@ private:
     template<typename obstacle_type, typename obstacle_arg>
     std::array<int, 2> start_it_dfs_rooms(std::vector<std::vector<index_type>> &closest_map,std::vector<std::vector<std::vector<obstacle_type>>> &obstacles_map,std::function<bool(int, int, obstacle_type,obstacle_arg)> predicate,std::vector<std::vector<bool>> &visited, int row_index,int column_index) {
 
-        constexpr static std::array<std::array<int, 3>, 8> deltas = {
-                {{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},
-                 {-1, -1, 3}}};
+        constexpr static std::array<std::array<int, 3>, 8> deltas = {{{-1, 0, 2}, {1, 0, 2}, {0, 1, 2}, {0, -1, 2}, {1, 1, 3}, {-1, 1, 3}, {1, -1, 3},{-1, -1, 3}}};
         std::stack<std::pair<std::pair<size_t, size_t>, int>> stack;
         int tollerance = 5;
         int x_sum = 0, y_sum = 0, count = 0;
@@ -957,6 +957,8 @@ private:
 
     int m_room_iteration_count;
 
+    bool empty = false;
+
 
 };
 
@@ -1018,9 +1020,9 @@ struct simulated_map {
 
                 static_assert(area::size != 5 or S::template intersect<tags::area_min, tags::area_max>::size != 2,"no option area defined and no area_min and area_max defined either");
 
-                m_map = common::get_or<tags::map_navigator_obj>(t, map_navigator());
+                m_map = common::get_or<tags::map_navigator_obj>(t, m_map);
 
-                if (S::template intersect<tags::obstacles>::size == 0) {
+                if (m_map.is_empty()) {
                     m_viewport_min = to_pos_type(make_vec(0, 0));
                     m_viewport_max = to_pos_type(make_vec(1, 1));
                 } else {
@@ -1061,46 +1063,9 @@ struct simulated_map {
 
             //! @brief Returns a path, from a start to a finish, composed of waypoints, which is obstacle free
             position_type path_to(position_type source, position_type dest) {
-
                 index_type index_source = position_to_index(source);
                 index_type index_dest = position_to_index(dest);
-
-                real_t best = std::numeric_limits<real_t>::max();
-                index_type minR1;
-
-                for (int i = 0; i < m_map.get_rooms_at(index_source).size(); i++) {
-                    if (i > 0 && m_map.get_rooms_at(index_source)[i] == 0) continue;
-
-                    for (int j = 0; j < m_map.get_rooms_at(index_dest).size(); j++) {
-                        if (j > 0 && m_map.get_rooms_at(index_dest)[j] == 0) continue;
-                        int p = m_map.get_rooms_at(index_source)[i];
-                        int q = m_map.get_rooms_at(index_dest)[j];
-
-                        auto room1_w_list = m_map.get_waypoints_for(p);
-                        auto room2_w_list = m_map.get_waypoints_for(q);
-
-                        if (p == q) return dest;
-
-                        for (index_type first_waypoint: room1_w_list) {
-                            for (index_type last_waypoint: room2_w_list) {
-                                /*
-                                real_t distance = get_eu_distance(first_waypoint[0], source[0], first_waypoint[1], source[1]) +
-                                                  get_eu_distance(last_waypoint[0], first_waypoint[0], last_waypoint[1], first_waypoint[1]) +
-                                                  get_eu_distance(dest[0], last_waypoint[0], dest[1], last_waypoint[1]);
-                                */
-                                real_t distance = m_map.get_distance(index_source, first_waypoint, last_waypoint, index_dest);
-
-                                if (distance <= best) {
-                                    best = distance;
-                                    minR1 = first_waypoint;
-                                }
-                            }
-                        }
-                    }
-
-                }
-
-                return index_to_position(minR1, source);
+                return index_to_position(m_map.path_to(index_source,index_dest), source);
             }
 
         private: // implementation details
@@ -1150,7 +1115,6 @@ struct simulated_map {
                     t[i] = vec[i];
                 return t;
             }
-
 
             //! @brief Vector of maximum coordinate of the grid area.
             position_type m_viewport_max;
