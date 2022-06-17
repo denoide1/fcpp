@@ -203,9 +203,11 @@ public:
         index_type minR1;
 
         for (int i = 0; i < get_rooms_at(source).size(); i++) {
+            if (i == 0 && get_rooms_at(source)[i] == 0) source = m_closest[source[1]][source[0]];
             if (i > 0 && get_rooms_at(source)[i] == 0) continue;
 
             for (int j = 0; j < get_rooms_at(dest).size(); j++) {
+                if (i == 0 && get_rooms_at(dest)[i] == 0) dest = m_closest[dest[1]][dest[0]];
                 if (j > 0 && get_rooms_at(dest)[j] == 0) continue;
                 int p = get_rooms_at(source)[i];
                 int q = get_rooms_at(dest)[j];
@@ -341,7 +343,7 @@ private:
 
                         if (!visited[row_index][col_index]) {
                             std::array<int, 2> b = start_it_dfs(closest_map, obstacles_map, predicate,visited, row_index, col_index);
-                            if (b[0] > 0 && b[1] > 1) {
+                            if (b[0] >= 0 && b[1] >= 0) {
                                 index_type b2;
                                 b2[0] = b[0];
                                 b2[1] = b[1];
@@ -389,9 +391,7 @@ private:
 
             if (!predicate(col_index, row_index, obstacles_map[row_index][col_index][0], 0)) {
 
-                if (col_index >= 0 && col_index < obstacles_map[0].size() && row_index >= 0 &&
-                    row_index < obstacles_map.size() &&
-                    !predicate(col_index, row_index, obstacles_map[row_index][col_index][0], 0)) {
+                if (col_index >= 0 && col_index < obstacles_map[0].size() && row_index >= 0 && row_index < obstacles_map.size() &&!predicate(col_index, row_index, obstacles_map[row_index][col_index][0], 0)) {
 
                     int distance = get_distance(closest_map[row_index][col_index], col_index,row_index);
                     int n_distance;
@@ -481,58 +481,61 @@ private:
                 int sumY = 0;
                 int count = 0;
                 for (std::pair<int, int> &c: curr_vec) {
-                    sumX += c.first;
-                    sumY += c.second;
-
-                    m_map_rooms[c.second][c.first][0] = iter.first.first;
-                    m_map_rooms[c.second][c.first][1] = iter.first.second;
-                    for (int i = 1; i < m_room_iteration_count + 1; i++) {
-                        if(c.first + i < m_map_rooms[0].size()) {
-                            m_map_rooms[c.second][c.first + i][0] = iter.first.first;
-                            m_map_rooms[c.second][c.first + i][1] = iter.first.second;
-                        }
-                        if(c.first - i >= 0) {
-                            m_map_rooms[c.second][c.first - i][0] = iter.first.first;
-                            m_map_rooms[c.second][c.first - i][1] = iter.first.second;
-                        }
-                        if(c.second + i < m_map_rooms.size()) {
-                            m_map_rooms[c.second + i][c.first][0] = iter.first.first;
-                            m_map_rooms[c.second + i][c.first][1] = iter.first.second;
-                        }
-                        if(c.second - i >= 0) {
-                            m_map_rooms[c.second - i][c.first][0] = iter.first.first;
-                            m_map_rooms[c.second - i][c.first][1] = iter.first.second;
-                        }
-                    }
-                    count++;
-                }
-                try {
-                    std::vector<std::pair<int, int>> opposite_vec = m_waypoint_map.at({iter.first.second, iter.first.first});
-                    already_visited.emplace(iter.first.second, iter.first.first);
-                    for (std::pair<int, int> &c: opposite_vec) {
+                    if(!m_bitmap[c.second][c.first]) {
                         sumX += c.first;
                         sumY += c.second;
                         m_map_rooms[c.second][c.first][0] = iter.first.first;
                         m_map_rooms[c.second][c.first][1] = iter.first.second;
                         for (int i = 1; i < m_room_iteration_count + 1; i++) {
-                            if(c.first + i < m_map_rooms[0].size()) {
+                            if (c.first + i < m_map_rooms[0].size() && !m_bitmap[c.second][c.first + i]) {
                                 m_map_rooms[c.second][c.first + i][0] = iter.first.first;
                                 m_map_rooms[c.second][c.first + i][1] = iter.first.second;
                             }
-                            if(c.first - i >= 0) {
+                            if (c.first - i >= 0 && !m_bitmap[c.second][c.first - i]) {
                                 m_map_rooms[c.second][c.first - i][0] = iter.first.first;
                                 m_map_rooms[c.second][c.first - i][1] = iter.first.second;
                             }
-                            if(c.second + i < m_map_rooms.size()) {
+                            if (c.second + i < m_map_rooms.size() && !m_bitmap[c.second + i][c.first]) {
                                 m_map_rooms[c.second + i][c.first][0] = iter.first.first;
                                 m_map_rooms[c.second + i][c.first][1] = iter.first.second;
                             }
-                            if(c.second - i >= 0) {
+                            if (c.second - i >= 0 && !m_bitmap[c.second - i][c.first]) {
                                 m_map_rooms[c.second - i][c.first][0] = iter.first.first;
                                 m_map_rooms[c.second - i][c.first][1] = iter.first.second;
                             }
                         }
                         count++;
+                    }
+                }
+                try {
+                    std::vector<std::pair<int, int>> opposite_vec = m_waypoint_map.at({iter.first.second, iter.first.first});
+                    already_visited.emplace(iter.first.second, iter.first.first);
+                    for (std::pair<int, int> &c: opposite_vec) {
+                        if(!m_bitmap[c.second][c.first]) {
+                            sumX += c.first;
+                            sumY += c.second;
+                            m_map_rooms[c.second][c.first][0] = iter.first.first;
+                            m_map_rooms[c.second][c.first][1] = iter.first.second;
+                            for (int i = 1; i < m_room_iteration_count + 1; i++) {
+                                if (c.first + i < m_map_rooms[0].size() && !m_bitmap[c.second][c.first + i]) {
+                                    m_map_rooms[c.second][c.first + i][0] = iter.first.first;
+                                    m_map_rooms[c.second][c.first + i][1] = iter.first.second;
+                                }
+                                if (c.first - i >= 0 && !m_bitmap[c.second][c.first - i]) {
+                                    m_map_rooms[c.second][c.first - i][0] = iter.first.first;
+                                    m_map_rooms[c.second][c.first - i][1] = iter.first.second;
+                                }
+                                if (c.second + i < m_map_rooms.size() && !m_bitmap[c.second + i][c.first]) {
+                                    m_map_rooms[c.second + i][c.first][0] = iter.first.first;
+                                    m_map_rooms[c.second + i][c.first][1] = iter.first.second;
+                                }
+                                if (c.second - i >= 0 && !m_bitmap[c.second - i][c.first]) {
+                                    m_map_rooms[c.second - i][c.first][0] = iter.first.first;
+                                    m_map_rooms[c.second - i][c.first][1] = iter.first.second;
+                                }
+                            }
+                            count++;
+                        }
                     }
                 }
                 catch (const std::exception &e) {}
@@ -770,8 +773,7 @@ private:
                             while (i + d[2] >= queues.size()) queues.emplace_back();
                             size_t n_x = point[0] + d[0];
                             size_t n_y = point[1] + d[1];
-                            if (n_x >= 0 && n_x < obstacles_map[0].size() && n_y >= 0 &&
-                                n_y < obstacles_map.size())
+                            if (n_x >= 0 && n_x < obstacles_map[0].size() && n_y >= 0 && n_y < obstacles_map.size())
                                 queues[i + d[2]].push_back({{n_x, n_y}, elem.second});
                         }
                     }
