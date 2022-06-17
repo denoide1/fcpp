@@ -104,7 +104,8 @@ public:
         real_path = path;
 #endif
         unsigned char *p = stbi_load(real_path.c_str(), &bitmap_width, &bitmap_height,&channels_per_pixel, 0);
-        */
+*/
+        if(path.empty()) return;
 
         m_map_rooms = std::vector<std::vector<std::vector<int>>>(m_bitmap.size(),std::vector<std::vector<int>>(m_bitmap[0].size(),std::vector<int>(2, 0)));
         auto rooms_function = std::function<bool(int, int, int, int, std::vector<std::vector<bool>> &)>(
@@ -117,8 +118,7 @@ public:
                     return false;
                 });
 
-        auto rooms_function_no_obstacle = std::function<bool(int, int, int, int,
-                                                             std::vector<std::vector<bool>> &)>(
+        auto rooms_function_no_obstacle = std::function<bool(int, int, int, int, std::vector<std::vector<bool>> &)>(
                 [&](int x, int y, int bitmap, int obstacle,
                     std::vector<std::vector<bool>> &visited_matrix) {
                     if (m_bitmap[y][x]) visited_matrix[y][x] = true;
@@ -143,13 +143,13 @@ public:
             fill_closest_rooms(m_rooms_closest, m_map_rooms, rooms_function);
             red_point = start_room_subdivision_rooms(m_rooms_closest, m_map_rooms,std::function<bool(int, int, int, int)>([&](int x, int y, int element, int arg) {return element > 0 || (element == 0 &&m_bitmap[y][x]);}),path,false);
             m_room_iteration_count++;
-        } while (red_point > 11);
+        } while (red_point > 0);
 
         fill_closest_rooms(m_rooms_closest, m_map_rooms, rooms_function_no_obstacle);
         fill_empty_spaces(path);
 
+
         /* debug
-        //write rooms
         for(int r = 0; r < m_bitmap.size(); r++) {
             for(int c = 0; c < m_bitmap[0].size(); c++) {
                 if (m_map_rooms[r][c][0] > 0) {
@@ -158,14 +158,20 @@ public:
             }
         }
 
+
+        for(index_type t : red_point) {
+            write_point_on_image(p, t[1], t[0], bitmap_width, bitmap_height, channels_per_pixel,color(RED), false);
+        }
+
+
         if(!path.empty())
             stbi_write_png("debugPoints.png", bitmap_width, bitmap_height, channels_per_pixel, p, bitmap_width * channels_per_pixel);
+        */
 
-         */
         calculate_waypoints(path);
 
-        /* debug
-        //write waypoints
+        //draw waypoints (debug)
+        /*
         for(waypoints p2 : m_waypoints_list) {
             write_point_on_image(p, p2.second[1], p2.second[0], bitmap_width, bitmap_height, channels_per_pixel, color(RED), false);
         }
@@ -174,7 +180,7 @@ public:
             stbi_write_png("debugPoints.png", bitmap_width, bitmap_height, channels_per_pixel, p, bitmap_width * channels_per_pixel);
 
         stbi_image_free(p);
-         */
+        */
 
         nav_floyd_warshall();
     }
@@ -369,6 +375,7 @@ private:
 
         std::vector<std::vector<bool>> visited(m_bitmap.size(),std::vector<bool>(m_bitmap[0].size()));
         std::vector<std::vector<std::pair<index_type, color>>> draw_buffers;
+        std::vector<index_type> red_points;
         std::vector<std::pair<index_type, int>> point_values;
 
         //prepare 2 buffers
@@ -404,12 +411,12 @@ private:
                         index_type t;
                         t[0] = col_index;
                         t[1] = row_index;
-                        draw_buffers[0].emplace_back(t, color(RED));
+                        red_points.emplace_back(t);
                         point_number++;
 
                         if (!visited[row_index][col_index]) {
                             std::array<int, 2> b = start_it_dfs_rooms(closest_map, obstacles_map,predicate,visited, row_index,col_index);
-                            if (b[0] > 0 && b[1] > 1) {
+                            if (b[0] >= 0 && b[1] >= 0) {
                                 index_type b2;
                                 b2[0] = b[0];
                                 b2[1] = b[1];
