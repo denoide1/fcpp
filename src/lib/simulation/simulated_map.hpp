@@ -218,12 +218,12 @@ public:
                 if (p == q) return dest;
 
                 for (index_type first_waypoint: room1_w_list) {
-                    if (first_waypoint[0] == source[0] && first_waypoint[1] == source[1]) continue;
                     for (index_type last_waypoint: room2_w_list) {
                         real_t distance = get_distance(source, first_waypoint, last_waypoint, dest);
                         if (distance <= best) {
                             best = distance;
                             minR1 = first_waypoint;
+                            if(minR1[0] == source[0] && minR1[1] == source[1]) minR1 = last_waypoint;
                         }
                     }
                 }
