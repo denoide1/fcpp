@@ -225,7 +225,6 @@ public:
                         if (distance <= best) {
                             best = distance;
                             minR1 = first_waypoint;
-                            minR1 = last_waypoint;
                         }
                     }
                 }
