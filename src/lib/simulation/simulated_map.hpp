@@ -201,6 +201,7 @@ public:
 
         real_t best = std::numeric_limits<real_t>::max();
         index_type minR1;
+        constexpr real_t range = 0.2;
 
         for (int i = 0; i < get_rooms_at(source).size(); i++) {
             if (i == 0 && get_rooms_at(source)[i] == 0) source = m_closest[source[1]][source[0]];
@@ -219,11 +220,12 @@ public:
 
                 for (index_type first_waypoint: room1_w_list) {
                     for (index_type last_waypoint: room2_w_list) {
+                        if(minR1[0] - source[0] < range && minR1[1] - source[1] < range) continue;
                         real_t distance = get_distance(source, first_waypoint, last_waypoint, dest);
                         if (distance <= best) {
                             best = distance;
                             minR1 = first_waypoint;
-                            if(minR1[0] == source[0] && minR1[1] == source[1]) minR1 = last_waypoint;
+                            minR1 = last_waypoint;
                         }
                     }
                 }
