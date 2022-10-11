@@ -220,7 +220,10 @@ public:
 
                 for (index_type first_waypoint: room1_w_list) {
                     for (index_type last_waypoint: room2_w_list) {
-                        if(minR1[0] - source[0] < range && minR1[1] - source[1] < range) continue;
+                        if(minR1[0] - source[0] <= range && minR1[1] - source[1] <= range) {
+                            std::cout<<"continued"<<std::endl;
+                            continue;
+                        }
                         real_t distance = get_distance(source, first_waypoint, last_waypoint, dest);
                         if (distance <= best) {
                             best = distance;
@@ -230,7 +233,7 @@ public:
                 }
             }
         }
-        return minR1;
+        if (minR1[0] - source[0] <= range && minR1[1] - source[1] <= range) return dest; else return minR1;
     }
 
     bool is_empty() {
@@ -1067,7 +1070,7 @@ struct simulated_map {
 
             //! @brief Returns true if a specific position is a obstacle otherwise false
             bool is_obstacle(position_type position) {
-                if (!is_in_area(position)) return false;
+                if (!is_in_area(position)) return true;
                 index_type index = position_to_index(position);
                 return m_map.is_obstacle_at(index);
             }
