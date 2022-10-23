@@ -197,7 +197,7 @@ public:
         return {m_bitmap[0].size(), m_bitmap.size()};
     }
 
-    index_type path_to(index_type source, index_type dest) {
+    std::pair<index_type,real_t> path_to(index_type source, index_type dest) {
 
         real_t best = std::numeric_limits<real_t>::max();
         index_type minR1;
@@ -216,12 +216,12 @@ public:
                 auto room1_w_list = get_waypoints_for(p);
                 auto room2_w_list = get_waypoints_for(q);
 
-                if (p == q) return dest;
+                if (p == q) return {dest,0};
 
                 for (index_type first_waypoint: room1_w_list) {
                     for (index_type last_waypoint: room2_w_list) {
                         if(minR1[0] - source[0] <= range && minR1[1] - source[1] <= range) {
-                            std::cout<<"continued"<<std::endl;
+                            std::cout<<"is infinite floyd? "<< m_floyd_matrix[m_waypoint_index[source]][m_waypoint_index[dest]]<<std::endl;
                             continue;
                         }
                         real_t distance = get_distance(source, first_waypoint, last_waypoint, dest);
@@ -233,7 +233,8 @@ public:
                 }
             }
         }
-        if (minR1[0] - source[0] <= range && minR1[1] - source[1] <= range) return dest; else return minR1;
+
+        return {minR1, get_eu_distance(source[0],dest[0],source[1],dest[1])};
     }
 
     bool is_empty() {
@@ -1079,7 +1080,7 @@ struct simulated_map {
             position_type path_to(position_type source, position_type dest) {
                 index_type index_source = position_to_index(source);
                 index_type index_dest = position_to_index(dest);
-                return index_to_position(m_map.path_to(index_source,index_dest), source);
+                return index_to_position(m_map.path_to(index_source,index_dest).first, source);
             }
 
         private: // implementation details
