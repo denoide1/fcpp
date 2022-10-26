@@ -17,6 +17,7 @@
 #include <limits>
 #include <map>
 #include <stb_image_write.h>
+#include <cassert>
 
 #include "lib/common/traits.hpp"
 #include "lib/component/base.hpp"
@@ -182,7 +183,19 @@ public:
         stbi_image_free(p);
         */
 
+        for(int i = 0; i < m_waypoints_list.size(); i++) {
+            assert((m_waypoints_list[i].second[0] < m_bitmap[0].size() && m_waypoints_list[i].second[0] >= 0) && (m_waypoints_list[i].second[1] < m_bitmap.size() && m_waypoints_list[i].second[1] >= 0));
+        }
+
         nav_floyd_warshall();
+
+        /*
+        for(int i = 0; i < m_floyd_matrix.size(); i++) {
+            for(int j = 0; j < m_floyd_matrix[0].size(); j++) {
+                assert(m_floyd_matrix[i][j] < std::numeric_limits<real_t>::max());
+            }
+        }
+         */
     }
 
     index_type get_closest_from(index_type index) {
@@ -220,8 +233,8 @@ public:
 
                 for (index_type first_waypoint: room1_w_list) {
                     for (index_type last_waypoint: room2_w_list) {
-                        if(minR1[0] - source[0] <= range && minR1[1] - source[1] <= range) {
-                            std::cout<<"is infinite floyd? "<< m_floyd_matrix[m_waypoint_index[source]][m_waypoint_index[dest]]<<std::endl;
+                        if(first_waypoint[0] - source[0] <= range && first_waypoint[1] - source[1] <= range) {
+                            std::cout<<m_floyd_matrix[m_waypoint_index[source]][m_waypoint_index[dest]]<<std::endl;
                             continue;
                         }
                         real_t distance = get_distance(source, first_waypoint, last_waypoint, dest);
@@ -795,7 +808,7 @@ private:
         int nV = m_navigation_graph.size();
         int i, j, k;
 
-        m_floyd_matrix = std::vector<std::vector<real_t>>(nV, std::vector<real_t>(nV));
+        m_floyd_matrix = std::vector<std::vector<real_t>>(nV, std::vector<real_t>(nV,std::numeric_limits<real_t>::max()));
 
         for (i = 0; i < nV; i++)
             for (j = 0; j < nV; j++)
@@ -1076,11 +1089,12 @@ struct simulated_map {
                 return m_map.is_obstacle_at(index);
             }
 
-            //! @brief Returns a path, from a start to a finish, composed of waypoints, which is obstacle free
-            position_type path_to(position_type source, position_type dest) {
+            //! @brief Returns the next waypoint and its distance of a path. This path starts from source and finish in dest, composed of waypoints, which is obstacle free
+            std::pair<position_type ,real_t> path_to(position_type source, position_type dest) {
                 index_type index_source = position_to_index(source);
                 index_type index_dest = position_to_index(dest);
-                return index_to_position(m_map.path_to(index_source,index_dest).first, source);
+                std::pair<index_type,real_t> next_waypoint = m_map.path_to(index_source,index_dest);
+                return {index_to_position(next_waypoint.first, source),next_waypoint.second};
             }
 
         private: // implementation details
