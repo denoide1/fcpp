@@ -211,43 +211,35 @@ public:
     }
 
     std::pair<index_type,real_t> path_to(index_type source, index_type dest) {
-
-        real_t best = std::numeric_limits<real_t>::max();
-        index_type minR1;
+        real_t best_distance = std::numeric_limits<real_t>::infinity();
+        index_type best_waypoint;
         constexpr real_t range = 0.2;
 
-        for (int i = 0; i < get_rooms_at(source).size(); i++) {
-            if (i == 0 && get_rooms_at(source)[i] == 0) source = m_closest[source[1]][source[0]];
-            if (i > 0 && get_rooms_at(source)[i] == 0) continue;
-
-            for (int j = 0; j < get_rooms_at(dest).size(); j++) {
-                if (i == 0 && get_rooms_at(dest)[i] == 0) dest = m_closest[dest[1]][dest[0]];
-                if (j > 0 && get_rooms_at(dest)[j] == 0) continue;
-                int p = get_rooms_at(source)[i];
-                int q = get_rooms_at(dest)[j];
-
-                auto room1_w_list = get_waypoints_for(p);
-                auto room2_w_list = get_waypoints_for(q);
-
-                if (p == q) return {dest,0};
-
-                for (index_type first_waypoint: room1_w_list) {
-                    for (index_type last_waypoint: room2_w_list) {
-                        if(first_waypoint[0] - source[0] <= range && first_waypoint[1] - source[1] <= range) {
-                            std::cout<<m_floyd_matrix[m_waypoint_index[source]][m_waypoint_index[dest]]<<std::endl;
-                            continue;
-                        }
+        // in obstacle, stays blocked
+        if (is_obstacle_at(source) or is_obstacle_at(dest))
+            return {source, 0};
+        for (int p : get_rooms_at(source)) if (p > 0) {
+            for (int q : get_rooms_at(dest)) if (q > 0) {
+                // same room, go straight
+                if (p == q)
+                    return {dest, get_eu_distance(source[0],dest[0],source[1],dest[1])};
+                for (index_type first_waypoint: get_waypoints_for(p)) {
+                    if (first_waypoint[0] - source[0] <= range && first_waypoint[1] - source[1] <= range) {
+                        std::cout<<m_floyd_matrix[m_waypoint_index[source]][m_waypoint_index[dest]]<<std::endl;
+                        continue;
+                    }
+                    for (index_type last_waypoint: get_waypoints_for(q)) {
                         real_t distance = get_distance(source, first_waypoint, last_waypoint, dest);
-                        if (distance <= best) {
-                            best = distance;
-                            minR1 = first_waypoint;
+                        if (distance <= best_distance) {
+                            best_distance = distance;
+                            best_waypoint = first_waypoint;
                         }
                     }
                 }
             }
         }
 
-        return {minR1, get_eu_distance(source[0],dest[0],source[1],dest[1])};
+        return {best_waypoint, best_distance};
     }
 
     bool is_empty() {
