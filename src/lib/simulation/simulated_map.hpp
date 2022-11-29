@@ -1,8 +1,8 @@
-// Copyright © 2021 Gianmarco Rampulla. All Rights Reserved.
+// Copyright © 2022 Gianmarco Rampulla and Giorgio Audrito. All Rights Reserved.
 
 /**
  * @file simulated_map.hpp
- * @brief Implementation of the `simulated_map` component handling collision and collision avoidance.
+ * @brief Implementation of the `simulated_map` component handling obstacle collision control.
  */
 
 #ifndef FCPP_SIMULATED_MAP_H_
@@ -50,17 +50,8 @@ namespace tags {
     //! @brief Net initialisation tag associating to the maximum coordinates of the grid area.
     struct area_max;
 
-    //! @brief Net initialisation tag associating to the path of the image representing obstacles.
-    struct obstacles {};
-
-    //! @brief Net initialisation tag associating to the color of the obstacles.
-    struct obstacles_color {};
-
-    //! @brief Net initialisation tag associating to the threshold in which consider the specified obstacles color.
-    struct obstacles_color_threshold {};
-
-    struct map_navigator_obj {};
-
+    //! @brief Net initialisation tag associating to the map navigator object.
+    struct navigator {};
 }
 
 //! @cond INTERNAL
@@ -990,12 +981,9 @@ private:
  * - \ref tags::area defines the area in which collision is considered.
  *
  * <b>Net initialisation tags:</b>
- * - \ref tags::area_min associates to a vector representing minimum area coordinate.
- * - \ref tags::area_max associates o a vector representing maximum area coordinate.
- * - \ref tags::obstacles associates to a path of the image representing obstacles.
- * - \ref tags::obstacles_colors associates to a color used to identify which pixel on the bitmaps are obstacles.
- * - \ref tags::obstacles_color_threshold associates to a real number used to have a margin error for colors in different image format.
- *
+ * - \ref tags::area_min associates to the the minimum coordinates of the grid area (defaults to the value in \ref tags::area).
+ * - \ref tags::area_max associates to the the maximum coordinates of the grid area (defaults to the value in \ref tags::area).
+ * - \ref tags::navigator associates to the map navigator object (defaults to the empty map).
  */
 namespace component {
 
@@ -1029,83 +1017,76 @@ struct simulated_map {
 
         //! @brief The global part of the component.
         class net : public P::net {
-
-        public: // visible by node objects and the main program
-
+          public: // visible by node objects and the main program
+            //! @brief Type for representing a position.
             using position_type = vec<dimension>;
 
             //! @brief Constructor from a tagged tuple.
             template<typename S, typename T>
             net(common::tagged_tuple<S, T> const &t) : P::net(t) {
-
-                static_assert(area::size != 5 or S::template intersect<tags::area_min, tags::area_max>::size != 2,"no option area defined and no area_min and area_max defined either");
-
-                m_map = common::get_or<tags::map_navigator_obj>(t, m_map);
-
+                static_assert(area::size != 5 or S::template intersect<tags::area_min, tags::area_max>::size != 2, "no option area defined and no area_min and area_max defined either");
+                m_map = common::get_or<tags::navigator>(t, m_map);
                 if (m_map.is_empty()) {
                     m_viewport_min = to_pos_type(make_vec(0, 0));
                     m_viewport_max = to_pos_type(make_vec(1, 1));
                 } else {
-                    //variables to avoid linking issues
+                    // variables to avoid linking issues
                     constexpr auto max = details::numseq_to_vec_map<area>::max;
                     constexpr auto min = details::numseq_to_vec_map<area>::min;
                     m_viewport_min = to_pos_type(fcpp::common::get_or<tags::area_min>(t, min));
                     m_viewport_max = to_pos_type(common::get_or<tags::area_max>(t, max));
                 }
-
                 position_type viewport_size = m_viewport_max - m_viewport_min;
                 m_index_scales = {m_map.get_bitmap_size()[0] / viewport_size[0], m_map.get_bitmap_size()[1] / viewport_size[1]};
                 m_index_factors = {viewport_size[0] / m_map.get_bitmap_size()[0], viewport_size[1] / m_map.get_bitmap_size()[1]};
-
             }
 
-            //! @brief Returns the position of the closest empty space starting from node_position
+            //! @brief Returns the position of the empty space closer to the given position.
             position_type closest_space(position_type position) {
                 if (!is_obstacle(position)) return position;
                 index_type index = position_to_index(position);
                 return index_to_position(m_map.get_closest_from(index), position);
             }
 
-            //! @brief Returns the position of the closest obstacle starting from node_position
+            //! @brief Returns the position of the obstacle closer to the given position.
             position_type closest_obstacle(position_type position) {
                 if (is_obstacle(position)) return position;
-                if (!is_in_area(position)) return closest_obstacle(get_nearest_edge_position(position));
+                if (!is_in_area(position)) return closest_obstacle(get_nearest_edge_position(position)); //TODO: think about it
                 index_type index = position_to_index(position);
                 return index_to_position(m_map.get_closest_from(index), position);
             }
 
-            //! @brief Returns true if a specific position is a obstacle otherwise false
+            //! @brief Checks whether a given position is an obstacle.
             bool is_obstacle(position_type position) {
-                if (!is_in_area(position)) return true;
+                if (!is_in_area(position)) return true; //TODO: think about it
                 index_type index = position_to_index(position);
                 return m_map.is_obstacle_at(index);
             }
 
-            //! @brief Returns the next waypoint and its distance of a path. This path starts from source and finish in dest, composed of waypoints, which is obstacle free
-            std::pair<position_type ,real_t> path_to(position_type source, position_type dest) {
+            //! @brief Returns the next waypoint and total length of a short path from a given source and destination avoiding obstacles.
+            std::pair<position_type, real_t> path_to(position_type source, position_type dest) {
                 index_type index_source = position_to_index(source);
                 index_type index_dest = position_to_index(dest);
-                std::pair<index_type,real_t> next_waypoint = m_map.path_to(index_source,index_dest);
-                return {index_to_position(next_waypoint.first, source),next_waypoint.second};
+                std::pair<index_type, real_t> next_waypoint = m_map.path_to(index_source, index_dest);
+                return {index_to_position(next_waypoint.first, source), next_waypoint.second};
             }
 
-        private: // implementation details
-
+          private: // implementation details
             //! @brief Type for representing a bitmap index.
             using index_type = map_navigator::index_type;
 
-            //! @brief Converts a node position to an equivalent bitmap index
-            inline index_type position_to_index(position_type const &position) {
+            //! @brief Converts a position to the corresponding bitmap index.
+            inline index_type position_to_index(position_type const& position) {
                 index_type index_to_return;
-                //linear scaling
+                // linear scaling
                 for (int i = 0; i < 2; i++)
                     index_to_return[i] = static_cast<size_t>(std::min(std::max(std::floor(m_index_scales[i] * (position[i] - m_viewport_min[i])),real_t(0)), m_viewport_max[i] - 1));
                 return index_to_return;
             }
 
-            //! @brief Converts a bitmap index to an equivalent node position
-            position_type index_to_position(index_type const &index, position_type position) {
-                //linear scaling inverse formula
+            //! @brief Converts a bitmap index to the position within it closer to a given position.
+            position_type index_to_position(index_type const& index, position_type position) {
+                // linear scaling inverse formula
                 for (int i = 0; i < 2; i++) {
                     real_t x = index[i] * m_index_factors[i] + m_viewport_min[i];
                     position[i] = std::min(std::max(position[i], x), x + m_index_factors[i]);
@@ -1113,27 +1094,26 @@ struct simulated_map {
                 return position;
             }
 
-            //! @brief Checks if a position is contained in the predefined area
+            //! @brief Checks whether a given position is within the map area.
             bool is_in_area(position_type position) {
                 for (int i = 0; i < 2; i++)
-                    if (position[i] < m_viewport_min[i] || position[i] > m_viewport_max[i])
+                    if (position[i] < m_viewport_min[i] or position[i] > m_viewport_max[i])
                         return false;
                 return true;
             }
 
-            //! @brief Calculates the nearest in area position (edge position) starting from a generic node position
+            //! @brief Calculates the position within the map area closer to a given position.
             position_type get_nearest_edge_position(position_type position) {
                 for (int i = 0; i < 2; i++)
                     position[i] = std::min(std::max(position[i], m_viewport_min[i]), m_viewport_max[i]);
                 return position;
             }
 
-            //! @brief Convert a generic vector to a compatible position on the map
-            template<size_t n>
-            position_type to_pos_type(vec<n> const &vec) {
+            //! @brief Converts a vector of possibly smaller dimension to a space position.
+            template <size_t n>
+            position_type to_pos_type(vec<n> const& vec) {
                 position_type t;
-                for (size_t i = 0; i < vec.dimension; ++i)
-                    t[i] = vec[i];
+                for (size_t i = 0; i < vec.dimension; ++i) t[i] = vec[i];
                 return t;
             }
 
@@ -1141,16 +1121,20 @@ struct simulated_map {
             position_type m_viewport_max;
             //! @brief Vector of minimum coordinate of the grid area.
             position_type m_viewport_min;
-            //! @brief Array containing cached values of m_index_size / m_viewport_size
+            //! @brief Array containing cached values of m_index_size / m_viewport_size.
             std::array<real_t, 2> m_index_scales;
-            //! @brief Array containing cached values of m_index_size * m_viewport_size
+            //! @brief Array containing cached values of m_index_size * m_viewport_size.
             std::array<real_t, 2> m_index_factors;
-
+            //! @brief The map navigator object.
             map_navigator m_map;
         };
     };
 };
-}
-}
-#endif // FCPP_SIMULATED_MAP_H_
 
+
+}
+
+
+}
+
+#endif // FCPP_SIMULATED_MAP_H_
