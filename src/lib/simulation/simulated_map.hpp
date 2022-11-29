@@ -190,10 +190,14 @@ public:
     }
 
     index_type get_closest_from(index_type index) {
+        assert(0 <= index[0] and index[0] < m_bitmap[0].size());
+        assert(0 <= index[1] and index[1] < m_bitmap.size());
         return m_closest[index[1]][index[0]];
     }
 
     bool is_obstacle_at(index_type index) {
+        assert(0 <= index[0] and index[0] < m_bitmap[0].size());
+        assert(0 <= index[1] and index[1] < m_bitmap.size());
         return m_bitmap[index[1]][index[0]];
     }
 
@@ -202,6 +206,8 @@ public:
     }
 
     std::pair<index_type,real_t> path_to(index_type source, index_type dest) {
+        assert(not is_obstacle_at(source));
+        assert(not is_obstacle_at(dest));
         real_t best_distance = std::numeric_limits<real_t>::infinity();
         index_type best_waypoint;
         constexpr real_t range = 0.2;
