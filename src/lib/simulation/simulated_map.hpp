@@ -209,20 +209,17 @@ public:
         assert(not is_obstacle_at(source));
         assert(not is_obstacle_at(dest));
         real_t best_distance = std::numeric_limits<real_t>::infinity();
-        index_type best_waypoint;
+        index_type best_waypoint = source;
         constexpr real_t range = 0.2;
 
-        // in obstacle, stays blocked
-        if (is_obstacle_at(source) or is_obstacle_at(dest))
-            return {source, 0};
         for (int p : get_rooms_at(source)) if (p > 0) {
             for (int q : get_rooms_at(dest)) if (q > 0) {
                 // same room, go straight
                 if (p == q)
                     return {dest, get_eu_distance(source[0],dest[0],source[1],dest[1])};
                 for (index_type first_waypoint: get_waypoints_for(p)) {
-                    if (first_waypoint[0] - source[0] <= range && first_waypoint[1] - source[1] <= range) {
-                        std::cout<<m_floyd_matrix[m_waypoint_index[source]][m_waypoint_index[dest]]<<std::endl;
+                    if (first_waypoint[0] - source[0] <= range and first_waypoint[1] - source[1] <= range) {
+                        std::cout << m_floyd_matrix[m_waypoint_index[source]][m_waypoint_index[dest]] << std::endl; // DEBUG
                         continue;
                     }
                     for (index_type last_waypoint: get_waypoints_for(q)) {
@@ -235,7 +232,6 @@ public:
                 }
             }
         }
-
         return {best_waypoint, best_distance};
     }
 
@@ -1045,6 +1041,7 @@ struct simulated_map {
                 position_type viewport_size = m_viewport_max - m_viewport_min;
                 m_index_scales = {m_map.get_bitmap_size()[0] / viewport_size[0], m_map.get_bitmap_size()[1] / viewport_size[1]};
                 m_index_factors = {viewport_size[0] / m_map.get_bitmap_size()[0], viewport_size[1] / m_map.get_bitmap_size()[1]};
+                m_distance_factor = std::sqrt(m_index_factors[0] * m_index_factors[1]);
             }
 
             //! @brief Returns the position of the empty space closer to the given position.
@@ -1077,7 +1074,7 @@ struct simulated_map {
                 index_type index_source = position_to_index(source);
                 index_type index_dest = position_to_index(dest);
                 std::pair<index_type, real_t> next_waypoint = m_map.path_to(index_source, index_dest);
-                return {index_to_position(next_waypoint.first, source), next_waypoint.second};
+                return {index_to_position(next_waypoint.first, source), next_waypoint.second * m_distance_factor};
             }
 
           private: // implementation details
@@ -1136,6 +1133,8 @@ struct simulated_map {
             std::array<real_t, 2> m_index_scales;
             //! @brief Array containing cached values of m_index_size * m_viewport_size.
             std::array<real_t, 2> m_index_factors;
+            //! @brief The scale factor for distances.
+            real_t m_distance_factor;
             //! @brief The map navigator object.
             map_navigator m_map;
         };
