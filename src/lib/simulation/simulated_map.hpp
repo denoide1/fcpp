@@ -1043,22 +1043,25 @@ struct simulated_map {
 
             //! @brief Returns the position of the empty space closer to the given position.
             position_type closest_space(position_type position) {
-                if (!is_obstacle(position)) return position;
+                if (m_map.is_empty()) return position;
+                if (not is_in_area(position)) crop_to_area(position);
+                if (not is_obstacle(position)) return position;
                 index_type index = position_to_index(position);
                 return index_to_position(m_map.get_closest_from(index), position);
             }
 
             //! @brief Returns the position of the obstacle closer to the given position.
             position_type closest_obstacle(position_type position) {
+                if (m_map.is_empty()) return to_pos_type(make_vec(std::numeric_limits<real_t>::infinity()));
                 if (is_obstacle(position)) return position;
-                if (!is_in_area(position)) return closest_obstacle(get_nearest_edge_position(position)); //TODO: think about it
                 index_type index = position_to_index(position);
                 return index_to_position(m_map.get_closest_from(index), position);
             }
 
             //! @brief Checks whether a given position is an obstacle.
             bool is_obstacle(position_type position) {
-                if (!is_in_area(position)) return true; //TODO: think about it
+                if (m_map.is_empty()) return false;
+                if (not is_in_area(position)) return true;
                 index_type index = position_to_index(position);
                 return m_map.is_obstacle_at(index);
             }
@@ -1075,6 +1078,9 @@ struct simulated_map {
             //! @brief Type for representing a bitmap index.
             using index_type = map_navigator::index_type;
 
+            //! @brief Infinitesimal quantity to avoid borders.
+            constexpr static real_t epsilon = 1e-6;
+
             //! @brief Converts a position to the corresponding bitmap index.
             inline index_type position_to_index(position_type const& position) {
                 index_type index_to_return;
@@ -1089,7 +1095,7 @@ struct simulated_map {
                 // linear scaling inverse formula
                 for (int i = 0; i < 2; i++) {
                     real_t x = index[i] * m_index_factors[i] + m_viewport_min[i];
-                    position[i] = std::min(std::max(position[i], x), x + m_index_factors[i]);
+                    position[i] = std::min(std::max(position[i], x + epsilon), x + m_index_factors[i] - epsilon);
                 }
                 return position;
             }
@@ -1097,16 +1103,15 @@ struct simulated_map {
             //! @brief Checks whether a given position is within the map area.
             bool is_in_area(position_type position) {
                 for (int i = 0; i < 2; i++)
-                    if (position[i] < m_viewport_min[i] or position[i] > m_viewport_max[i])
+                    if (position[i] <= m_viewport_min[i] or position[i] >= m_viewport_max[i])
                         return false;
                 return true;
             }
 
-            //! @brief Calculates the position within the map area closer to a given position.
-            position_type get_nearest_edge_position(position_type position) {
+            //! @brief Substitutes a given position with the closer one in the map area.
+            void crop_to_area(position_type& position) {
                 for (int i = 0; i < 2; i++)
-                    position[i] = std::min(std::max(position[i], m_viewport_min[i]), m_viewport_max[i]);
-                return position;
+                    position[i] = std::min(std::max(position[i], m_viewport_min[i] + epsilon), m_viewport_max[i] - epsilon);
             }
 
             //! @brief Converts a vector of possibly smaller dimension to a space position.
