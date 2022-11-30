@@ -216,7 +216,7 @@ public:
             for (int q : get_rooms_at(dest)) if (q > 0) {
                 // same room, go straight
                 if (p == q)
-                    return {dest, get_eu_distance(source[0],dest[0],source[1],dest[1])};
+                    return {dest, 0};
                 for (index_type first_waypoint: get_waypoints_for(p)) {
                     if (first_waypoint[0] - source[0] <= range and first_waypoint[1] - source[1] <= range) {
                         std::cout << m_floyd_matrix[m_waypoint_index[source]][m_waypoint_index[dest]] << std::endl; // DEBUG
@@ -232,7 +232,7 @@ public:
                 }
             }
         }
-        return {best_waypoint, best_distance};
+        return {best_waypoint, best_distance - get_eu_distance(source[0],dest[0],source[1],dest[1])};
     }
 
     bool is_empty() {
@@ -1069,7 +1069,7 @@ struct simulated_map {
                 return m_map.is_obstacle_at(index);
             }
 
-            //! @brief Returns the next waypoint and total length of a short path from a given source and destination avoiding obstacles.
+            //! @brief Returns the next waypoint and remaining length after it of a short path from a given source and destination avoiding obstacles.
             std::pair<position_type, real_t> path_to(position_type source, position_type dest) {
                 index_type index_source = position_to_index(source);
                 index_type index_dest = position_to_index(dest);
