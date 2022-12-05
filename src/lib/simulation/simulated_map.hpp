@@ -205,12 +205,17 @@ public:
         return {m_bitmap[0].size(), m_bitmap.size()};
     }
 
-    std::pair<index_type,real_t> path_to(index_type source, index_type dest) {
+    std::pair<index_type,real_t> path_to(index_type source, index_type dest, bool debug = false) {
         assert(not is_obstacle_at(source));
         assert(not is_obstacle_at(dest));
         real_t best_distance = std::numeric_limits<real_t>::infinity();
         index_type best_waypoint = source;
         constexpr real_t range = 0.2;
+
+        if(debug) {
+            std::cout<<"Starting pos: ["<<source[0]<<","<<source[1]<<"]"<<std::endl;
+            std::cout<<"Target pos: ["<<dest[0]<<","<<dest[1]<<"]"<<std::endl;
+        }
 
         for (int p : get_rooms_at(source)) if (p > 0) {
             for (int q : get_rooms_at(dest)) if (q > 0) {
@@ -218,11 +223,19 @@ public:
                 if (p == q)
                     return {dest, 0};
                 for (index_type first_waypoint: get_waypoints_for(p)) {
+                    if(debug) {
+                        std::cout<<"first_waypoint considered: ["<<first_waypoint[0]<<","<<first_waypoint[1]<<"]"<<std::endl;
+                    }
+
                     if (first_waypoint[0] - source[0] <= range and first_waypoint[1] - source[1] <= range) {
                         std::cout << m_floyd_matrix[m_waypoint_index[source]][m_waypoint_index[dest]] << std::endl; // DEBUG
                         continue;
                     }
                     for (index_type last_waypoint: get_waypoints_for(q)) {
+                        if(debug) {
+                            std::cout<<"room couple considered: ["<<m_map_rooms[first_waypoint[1]][first_waypoint[0]][0]<<","<<m_map_rooms[last_waypoint[1]][last_waypoint[0]][0]<<std::endl;
+                            std::cout<<"couple considered: ["<<first_waypoint[0]<<","<<first_waypoint[1]<<"]"<<"   ["<<last_waypoint[0]<<","<<last_waypoint[1]<<"], distance: "<<get_eu_distance(first_waypoint[0],last_waypoint[0],first_waypoint[1],last_waypoint[1])<<std::endl;
+                        }
                         real_t distance = get_distance(source, first_waypoint, last_waypoint, dest);
                         if (distance <= best_distance) {
                             best_distance = distance;
@@ -232,6 +245,14 @@ public:
                 }
             }
         }
+
+        if(debug) {
+            std::cout<<"Starting pos: ["<<source[0]<<","<<source[1]<<"]"<<std::endl;
+            std::cout<<"Target pos: ["<<dest[0]<<","<<dest[1]<<"]"<<std::endl;
+            std::cout<<"best_waypoint: ["<<best_waypoint[0]<<","<<best_waypoint[1]<<"]"<<std::endl;
+            std::cout<<"best_waypoint distance: "<<best_distance - get_eu_distance(source[0],dest[0],source[1],dest[1])<<std::endl;
+        }
+
         return {best_waypoint, best_distance - get_eu_distance(source[0],dest[0],source[1],dest[1])};
     }
 
@@ -1070,10 +1091,10 @@ struct simulated_map {
             }
 
             //! @brief Returns the next waypoint and remaining length after it of a short path from a given source and destination avoiding obstacles.
-            std::pair<position_type, real_t> path_to(position_type source, position_type dest) {
+            std::pair<position_type, real_t> path_to(position_type source, position_type dest, bool debug = false) {
                 index_type index_source = position_to_index(source);
                 index_type index_dest = position_to_index(dest);
-                std::pair<index_type, real_t> next_waypoint = m_map.path_to(index_source, index_dest);
+                std::pair<index_type, real_t> next_waypoint = m_map.path_to(index_source, index_dest, debug);
                 return {index_to_position(next_waypoint.first, source), next_waypoint.second * m_distance_factor};
             }
 
