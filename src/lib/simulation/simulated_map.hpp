@@ -213,7 +213,7 @@ public:
         constexpr real_t range = 0.2;
         constexpr real_t debug_uid = 200;
 
-        if(debug) {
+        if(debug && (uid == debug_uid)) {
             std::cout<<"Starting pos: ["<<source[0]<<","<<source[1]<<"]"<<std::endl;
             std::cout<<"Target pos: ["<<dest[0]<<","<<dest[1]<<"]"<<std::endl;
         }
@@ -233,21 +233,21 @@ public:
                         continue;
                     }
                     for (index_type last_waypoint: get_waypoints_for(q)) {
-                        if(debug && uid == debug_uid) {
-                            std::cout<<"room couple considered: ["<<m_map_rooms[first_waypoint[1]][first_waypoint[0]][0]<<","<<m_map_rooms[last_waypoint[1]][last_waypoint[0]][0]<<"]"<<std::endl;
-                            std::cout<<"couple considered: ["<<first_waypoint[0]<<","<<first_waypoint[1]<<"]"<<"   ["<<last_waypoint[0]<<","<<last_waypoint[1]<<"], distance: "<<get_eu_distance(first_waypoint[0],last_waypoint[0],first_waypoint[1],last_waypoint[1])<<std::endl;
-                        }
                         real_t distance = get_distance(source, first_waypoint, last_waypoint, dest);
                         if (distance <= best_distance) {
                             best_distance = distance;
                             best_waypoint = first_waypoint;
+                        }
+                        if(debug && (uid == debug_uid)) {
+                            std::cout<<"rooms considered: ["<<m_map_rooms[first_waypoint[1]][first_waypoint[0]][0]<<","<<m_map_rooms[last_waypoint[1]][last_waypoint[0]][0]<<"]"<<std::endl;
+                            std::cout<<"waypoints considered: ["<<first_waypoint[0]<<","<<first_waypoint[1]<<"]"<<"   ["<<last_waypoint[0]<<","<<last_waypoint[1]<<"], distance: "<<get_eu_distance(first_waypoint[0],last_waypoint[0],first_waypoint[1],last_waypoint[1])<<std::endl;
                         }
                     }
                 }
             }
         }
 
-        if(debug && uid == debug_uid) {
+        if(debug && (uid == debug_uid)) {
             std::cout<<"Starting pos: ["<<source[0]<<","<<source[1]<<"]"<<std::endl;
             std::cout<<"Target pos: ["<<dest[0]<<","<<dest[1]<<"]"<<std::endl;
             std::cout<<"best_waypoint: ["<<best_waypoint[0]<<","<<best_waypoint[1]<<"]"<<std::endl;
