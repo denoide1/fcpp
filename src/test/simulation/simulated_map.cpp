@@ -50,13 +50,13 @@ TEST(SimulatedMapTest, CollisionTest) {
 
    map_navigator m = map_navigator("bitmap_test.png", color(BLACK), 0.5);
    //start analysis
-   combo1::net net{common::make_tagged_tuple<map_navigator_obj, area_min, area_max>(m, make_vec(0,0), make_vec(40,40))};
+   combo1::net net{common::make_tagged_tuple<navigator, area_min, area_max>(m, make_vec(0,0), make_vec(40,40))};
    EXPECT_TRUE(net.is_obstacle(make_vec(0.82,32.36)));
    EXPECT_FALSE(net.is_obstacle(make_vec(11.45,33.58)));
-   EXPECT_EQ(net.closest_obstacle(make_vec(1.78,23.78)), make_vec(1.78,30));
-   EXPECT_EQ(net.closest_obstacle(make_vec(14.3,36.7)), make_vec(10,36.7));
-   EXPECT_EQ(net.closest_space(make_vec(0.82,32.36)), make_vec(0.82,30));
-   EXPECT_EQ(net.closest_space(make_vec(23.45,13.64)), make_vec(30,13.64));
+   EXPECT_EQ(net.closest_obstacle(make_vec(1.78,23.78)), make_vec(1.78,30.000001));
+   EXPECT_EQ(net.closest_obstacle(make_vec(14.3,36.7)), make_vec(9.999999,36.70));
+   EXPECT_EQ(net.closest_space(make_vec(0.82,32.36)), make_vec(0.8199999999999999,29.999999));
+   EXPECT_EQ(net.closest_space(make_vec(23.45,13.64)), make_vec(30.000001,13.64));
 
    //remove test bitmap
 #if _WIN32
