@@ -1,4 +1,16 @@
 cc_test(
+    name = "bloom",
+    srcs = ["bloom.cpp"],
+    deps = [
+        "@gtest//:main",
+        "//lib/data:bloom",
+    ],
+    copts = ['-Iexternal/gtest/googletest/include/'],
+    args = ['--gtest_color=yes'],
+    timeout = 'short',
+)
+
+cc_test(
     name = "color",
     srcs = ["color.cpp"],
     deps = [
@@ -29,6 +41,18 @@ cc_test(
     deps = [
         "@gtest//:main",
         "//lib/data:hyperloglog",
+    ],
+    copts = ['-Iexternal/gtest/googletest/include/'],
+    args = ['--gtest_color=yes'],
+    timeout = 'short',
+)
+
+cc_test(
+    name = "ordered",
+    srcs = ["ordered.cpp"],
+    deps = [
+        "@gtest//:main",
+        "//lib/data:ordered",
     ],
     copts = ['-Iexternal/gtest/googletest/include/'],
     args = ['--gtest_color=yes'],

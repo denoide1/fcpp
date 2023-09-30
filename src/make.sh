@@ -8,6 +8,8 @@ function usage() {
     echo -e "    \033[1mclean\033[0m:                           cleans all built files before command execution"
     echo -e "    \033[1mdoc\033[0m:                             builds the documentation before command execution"
     echo -e "    \033[1mgui\033[0m:                             enables the graphical user interface on cmake"
+    echo -e "    \033[1mmpi\033[0m:                             enables the message passing interface for running on clusters"
+    echo -e "    \033[1mhosts <path>\033[0m:                    sets the \033[4mrelative\033[0m path to a hostfile for MPI (defaults to hosts.txt)"
     echo -e "    \033[1munix\033[0m:                            overrides the auto-detected cmake platform to unix"
     echo -e "    \033[1mwindows\033[0m:                         overrides the auto-detected cmake platform to windows"
     echo -e "    \033[1mbazel\033[0m:                           sets the build tool to bazel instead of cmake"
@@ -25,6 +27,8 @@ function usage() {
     echo -e "       <copts...> <targets...>"
     echo -e "    \033[1mall\033[0m:                             builds all possible targets and documentation"
     echo -e "       <copts...>"
+    echo -e "    \033[1mmultiall\033[0m:                        tests everything with clang/gcc and bazel/cmake"
+    echo -e "       <copts...>"
     echo -e "Targets can be substrings demanding builds for all possible expansions."
     exit 1
 }
@@ -33,9 +37,12 @@ if [ "$1" == "" ]; then
     usage
 fi
 
+hostfile="hosts.txt"
 btype="Debug"
+rtype="STD"
 opts=""
 copts=""
+mpiopts="-N 1"
 cmakeopts=""
 targets=""
 errored=( )
@@ -130,8 +137,11 @@ function mkdoc() {
     if [ ! -d doc ]; then
         mkdir doc
     fi
+    if [ -d extras/docs ]; then
+        extras/docs/doxymake.py lib/{cloud,component,deployment,simulation}/*.hpp > extras/docs/node_net.md
+    fi
     echo -e "\033[4mdoxygen Doxyfile\033[0m" >&2
-    doxygen Doxyfile 2>&1 | grep -v "Generating docs\|\.\.\.\|Searching for" | tee tmpdoc.err | grep -v "is not documented.$" | sed 's|^.*/fcpp/src/lib/|- |;s|: warning: |: |' | sed -E 's|:([0-9 ]):|: \1:|;s|:([0-9 ][0-9 ]):|: \1:|;s|:([0-9 ][0-9 ][0-9 ]):|: \1:|;s|:([0-9 ]*):|, line\1:|'
+    doxygen Doxyfile 2>&1 >/dev/null | tee tmpdoc.err | sed 's|^.*/fcpp/src/lib/|- |;s|: warning: |: |' | sed -E 's|:([0-9 ]):|: \1:|;s|:([0-9 ][0-9 ]):|: \1:|;s|:([0-9 ][0-9 ][0-9 ]):|: \1:|;s|:([0-9 ]*):|, line\1:|'
     ndoc=`cat tmpdoc.err | grep "is not documented.$" | wc -l | tr -cd '0-9'`
     nerr=`cat tmpdoc.err | grep '/fcpp/src/lib/' | wc -l | tr -cd '0-9'`
     if [ $ndoc -gt 0 ]; then
@@ -285,8 +295,8 @@ while [ "$1" != "" ]; do
         export TEST_TMPDIR=`pwd`/..
     elif [ "$1" == "gcc" ]; then
         shift 1
-        gcc=$(which $(compgen -c gcc- | grep "^gcc-[1-9][0-9]*$" | uniq))
-        gpp=$(which $(compgen -c g++- | grep "^g++-[1-9][0-9]*$" | uniq))
+        gcc=$(which $(compgen -c gcc- | grep "^gcc-[1-9][0-9]$" | sort | tail -n 1))
+        gpp=$(which $(compgen -c g++- | grep "^g++-[1-9][0-9]$" | sort | tail -n 1))
         opts="$opts -DCMAKE_C_COMPILER=$gcc -DCMAKE_CXX_COMPILER=$gpp"
         export BAZEL_USE_CPP_ONLY_TOOLCHAIN=1
         export CC="$gpp"
@@ -297,6 +307,18 @@ while [ "$1" != "" ]; do
     elif [ "$1" == "gui" ]; then
         shift 1
         opts="$opts -DFCPP_BUILD_GL=ON"
+    elif [ "$1" == "mpi" ]; then
+        shift 1
+        opts="$opts -DFCPP_BUILD_MPI=ON"
+        rtype="MPI"
+        while [ "$1" != "run" -a "$1" != "build" -a "$1" != "hosts" ]; do
+            mpiopts="$mpiopts $1"
+            shift 1
+        done
+    elif [ "$1" == "hosts" ]; then
+        shift 1
+        hostfile=$1
+        shift 1
     elif [ "$1" == "windows" ]; then
         shift 1
         platform="MinGW"
@@ -312,7 +334,10 @@ while [ "$1" != "" ]; do
         videoreplace=`echo -e "\033[7m&\033[0m"`
         replacing=0
         shift 2
-        if [ "$1" != "" -a `echo $1 | grep "clean\|here\|gcc\|sed\|doc\|build\|test\|run\|all" | wc -l` -eq 0 ]; then
+        if [ "$2" != "" ]; then
+            usage
+        fi
+        if [ "$1" != "" ]; then
             replace="$1"
             if [ "$replace" == "del" ]; then
                 replace=""
@@ -489,7 +514,7 @@ while [ "$1" != "" ]; do
                 alltargets="$targets"
                 cmake_builderx
             else
-                while [ "$1" != "" ]; do
+                while [ "$1" != "" -a "$1" != "-" ]; do
                     cmake_finderx "$1" target
                     if [ "$targets" == "" ]; then
                         echo -e "\033[1mtarget \"$1\" not found\033[0m"
@@ -498,25 +523,33 @@ while [ "$1" != "" ]; do
                     fi
                     shift 1
                 done
+                shift 1
                 if [ "$alltargets" != "" ]; then
                     cmake_builderx $alltargets
                 fi
             fi
-            for t in $alltargets; do
-                target=bin/run/$t
-                if [ ${#exitcodes[@]} -gt 0 ]; then
-                    quitter
-                fi
-                name="${target:8}"
-                file="output/$name"
-                raw="bin/output"
-                mkdir -p bin/output output/raw
-                cd bin
-                echo -e "\033[1;4m$target\033[0m\n"
-                run/$name > ../$file.txt 2> ../$file.err & pid=$!
-                cd ..
-                monitor $pid $name $file $raw
-            done
+            if [ "$?" == "0" ]; then
+                for t in $alltargets; do
+                    target=bin/run/$t
+                    if [ ${#exitcodes[@]} -gt 0 ]; then
+                        quitter
+                    fi
+                    name="${target:8}"
+                    file="output/$name"
+                    raw="bin/output"
+                    mkdir -p bin/output output/raw
+                    cd bin
+                    if [ $rtype == "STD" ]; then
+                        echo -e "\033[1;4mrun/$name $@\033[0m\n"
+                        run/$name $@ > ../$file.txt 2> ../$file.err & pid=$!
+                    else
+                        echo -e "\033[1;4mmpiexec --hostfile ../$hostfile $mpiopts run/$name $@\033[0m\n"
+                        mpiexec --hostfile "../$hostfile" $mpiopts run/$name $@ > ../$file.txt 2> ../$file.err & pid=$!
+                    fi
+                    cd ..
+                    monitor $pid $name $file $raw
+                done
+            fi
         else
             finder "$1" "cc_binary"
             if [ "$targets" == "" ]; then
@@ -525,6 +558,7 @@ while [ "$1" != "" ]; do
                 echo -e "\033[1mtarget is not unique\033[0m"
                 echo $targets | tr ' ' '\n' | sed 's|^|//|'
             else
+                shift 1
                 name=`echo $targets | sed 's|.*:||'`
                 file="output/$name"
                 raw="output"
@@ -534,7 +568,13 @@ while [ "$1" != "" ]; do
                     quitter
                 fi
                 mkdir -p output/raw
-                $built > $file.txt 2> $file.err & pid=$!
+                if [ $rtype == "STD" ]; then
+                    echo -e "\033[1;4m$built $@\033[0m\n"
+                    $built > $file.txt 2> $file.err & pid=$!
+                else
+                    echo -e "\033[1;4mmpiexec --hostfile ../$hostfile $mpiopts $built $@\033[0m\n"
+                    mpiexec --hostfile "../$hostfile" $mpiopts $built $@ > $file.txt 2> $file.err & pid=$!
+                fi
                 monitor $pid $name $file $raw
             fi
         fi
@@ -564,10 +604,12 @@ while [ "$1" != "" ]; do
                     cmake_builderx $alltargets
                 fi
             fi
-            for t in $alltargets; do
-                target=bin/test/$t
-                reporter $target
-            done
+            if [ "$?" == "0" ]; then
+                for t in $alltargets; do
+                    target=bin/test/$t
+                    reporter $target
+                done
+            fi
         else
             alltargets=""
             while [ "$1" != "" ]; do
@@ -602,12 +644,14 @@ while [ "$1" != "" ]; do
         if [ $builder == cmake ]; then
             opts="$opts -DFCPP_BUILD_TESTS=ON"
             cmake_builderx
-            cmake_finderx "" test
-            alltargets="$targets"
-            for t in $alltargets; do
-                target=bin/test/$t
-                reporter $target
-            done
+            if [ "$?" == "0" ]; then
+                cmake_finderx "" test
+                alltargets="$targets"
+                for t in $alltargets; do
+                    target=bin/test/$t
+                    reporter $target
+                done
+            fi
         else
             for folder in ${folders[@]}; do
                 alltargets="$alltargets $folder/..."

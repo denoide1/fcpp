@@ -1,4 +1,4 @@
-// Copyright © 2022 Gianmarco Rampulla and Giorgio Audrito. All Rights Reserved.
+// Copyright © 2023 Gianmarco Rampulla. All Rights Reserved.
 
 /**
  * @file simulated_map.hpp
@@ -31,23 +31,23 @@
  */
 namespace fcpp {
 
-//! @brief Namespace for all FCPP components.
+// Namespace for all FCPP components.
 namespace component {
 
-//! @brief Namespace of tags to be used for initialising components.
+// Namespace of tags to be used for initialising components.
 namespace tags {
-    //! @brief Declaration tag associating to the dimensionality of the space.
-    template<intmax_t n>
+    //! @brief Declaration tag associating to the dimensionality of the space (defaults to 2).
+    template <intmax_t n>
     struct dimension;
 
-    //! @brief Declaration tag associating to the bounding coordinates of the grid area.
-    template<intmax_t xmin, intmax_t ymin, intmax_t xmax, intmax_t ymax, intmax_t den>
+    //! @brief Declaration tag associating to the bounding coordinates of the grid area (defaults to the minimal area covering initial nodes)
+    template <intmax_t xmin, intmax_t ymin, intmax_t xmax, intmax_t ymax, intmax_t den>
     struct area;
 
-    //! @brief Net initialisation tag associating to the minimum coordinates of the grid area.
+    //! @brief Net initialisation tag associating to the minimum coordinates of the grid area (defaults to the value in \ref tags::area).
     struct area_min;
 
-    //! @brief Net initialisation tag associating to the maximum coordinates of the grid area.
+    //! @brief Net initialisation tag associating to the maximum coordinates of the grid area (defaults to the value in \ref tags::area).
     struct area_max;
 
     //! @brief Net initialisation tag associating to the map navigator object.
@@ -1002,7 +1002,7 @@ private:
  *
  * <b>Declaration tags:</b>
  * - \ref tags::dimension defines the dimensionality of the space (defaults to 2).
- * - \ref tags::area defines the area in which collision is considered.
+ * - \ref tags::area defines the bounding coordinates of the grid area (defaults to the minimal area covering initial nodes).
  *
  * <b>Net initialisation tags:</b>
  * - \ref tags::area_min associates to the the minimum coordinates of the grid area (defaults to the value in \ref tags::area).

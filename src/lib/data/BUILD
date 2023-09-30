@@ -1,4 +1,13 @@
 cc_library(
+    name = 'bloom',
+    hdrs = ['bloom.hpp'],
+    srcs = ['bloom.cpp'],
+    visibility = [
+        '//visibility:public',
+    ],
+)
+
+cc_library(
     name = 'color',
     hdrs = ['color.hpp'],
     srcs = ['color.cpp'],
@@ -28,6 +37,15 @@ cc_library(
     deps = [
         "//lib:settings",
     ],
+    visibility = [
+        '//visibility:public',
+    ],
+)
+
+cc_library(
+    name = "ordered",
+    hdrs = ["ordered.hpp"],
+    srcs = ["ordered.cpp"],
     visibility = [
         '//visibility:public',
     ],

@@ -67,6 +67,7 @@ cc_library(
     hdrs = ['coordination.hpp'],
     srcs = ['coordination.cpp'],
     deps = [
+        "//lib/coordination:basics",
         "//lib/coordination:collection",
         "//lib/coordination:election",
         "//lib/coordination:geometry",
@@ -84,9 +85,11 @@ cc_library(
     hdrs = ['data.hpp'],
     srcs = ['data.cpp'],
     deps = [
+        "//lib/data:bloom",
         "//lib/data:color",
         "//lib/data:field",
         "//lib/data:hyperloglog",
+        "//lib/data:ordered",
         "//lib/data:shape",
         "//lib/data:tuple",
         "//lib/data:vec",
@@ -158,6 +161,7 @@ cc_library(
         "//lib/option:aggregator",
         "//lib/option:connect",
         "//lib/option:distribution",
+        "//lib/option:filter",
         "//lib/option:functor",
         "//lib/option:metric",
         "//lib/option:sequence",

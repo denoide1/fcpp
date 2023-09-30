@@ -6,6 +6,7 @@ cc_library(
         "//lib:settings",
         "//lib/common:algorithm",
         "//lib/common:tagged_tuple",
+        "//lib/option:filter",
     ],
     visibility = [
         '//visibility:public',
@@ -40,6 +41,15 @@ cc_library(
 )
 
 cc_library(
+    name = 'filter',
+    hdrs = ['filter.hpp'],
+    srcs = ['filter.cpp'],
+    visibility = [
+        '//visibility:public',
+    ],
+)
+
+cc_library(
     name = 'functor',
     hdrs = ['functor.hpp'],
     srcs = ['functor.cpp'],
@@ -58,6 +68,7 @@ cc_library(
     srcs = ['metric.cpp'],
     deps = [
         "//lib:settings",
+        "//lib/common:option",
         "//lib/common:tagged_tuple",
     ],
     visibility = [
