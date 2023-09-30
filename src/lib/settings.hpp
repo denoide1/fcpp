@@ -186,7 +186,7 @@
 
 #ifndef FCPP_WARNING_TRACE
     //! @brief Setting defining whether hash colliding of code points is admissible.
-    #define FCPP_WARNING_TRACE true
+    #define FCPP_WARNING_TRACE false
 #endif
 
 
@@ -217,6 +217,12 @@
 #ifndef FCPP_SPHERICITY
 //! @brief Setting defining the definition of spheres (1 for icosahedron).
 #define FCPP_SPHERICITY 10
+#endif
+
+
+#ifndef FCPP_TAIL_GRANULARITY
+//! @brief Setting defining the granularity of snapshot points in tails in FPS.
+#define FCPP_TAIL_GRANULARITY 10
 #endif
 
 

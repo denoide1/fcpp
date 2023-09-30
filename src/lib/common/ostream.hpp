@@ -64,6 +64,9 @@ namespace details {
 
 //! @brief String conversion of basic types.
 //! @{
+inline std::string to_string(bool x) {
+    return x ? "true" : "false";
+}
 inline std::string to_string(char x) {
     return {x};
 }
@@ -97,13 +100,19 @@ inline std::string to_string(double x) {
 inline std::string to_string(long double x) {
     return details::real2str<long double>(x);
 }
+template <typename T>
+inline std::string to_string(T* p) {
+    std::stringstream ss;
+    ss << p;
+    return ss.str();
+}
 //! @}
 
 namespace details {
     //! @brief Enables a template resolution if T has a to_string function.
     template <typename... Ts>
     using if_stringable = std::enable_if_t<
-        fcpp::common::all_true<
+        fcpp::common::number_all_true<
             std::is_same<std::decay_t<decltype(to_string(common::escape(std::declval<Ts>())))>, std::string>::value...
         >
     >;
@@ -405,29 +414,31 @@ namespace fcpp {
     //! @brief Printing fields.
     template <typename O, typename T, typename = common::if_ostream<O>>
     O& operator<<(O& o, field<T> const& x) {
+        using const_ref = std::conditional_t<std::is_same<T,bool>::value, T, T const&>;
         o << "{";
-        for (size_t i = 0; i < details::get_ids(x).size(); ++i) {
-            o << details::get_ids(x)[i] << ":" << common::escape(details::get_vals(x)[i+1]) << ", ";
+        for (size_t i = 0; i < details::get_ids(x).size(); ++i) if (details::get_vals(x)[i+1] != details::get_vals(x)[0]) {
+            o << details::get_ids(x)[i] << ":" << common::escape(const_ref(details::get_vals(x)[i+1])) << ", ";
         }
-        o << "*:" << common::escape(details::get_vals(x)[0]) << "}";
+        o << "*:" << common::escape(const_ref(details::get_vals(x)[0])) << "}";
         return o;
     }
 
     //! @brief Converting fields to strings.
     template <typename T, typename = fcpp::details::if_stringable<T>>
     std::string to_string(field<T> const& x) {
+        using const_ref = std::conditional_t<std::is_same<T,bool>::value, T, T const&>;
         std::string s = "{";
-        for (size_t i = 0; i < details::get_ids(x).size() and i < FCPP_FIELD_DRAW_LIMIT and s.size() < 10*FCPP_FIELD_DRAW_LIMIT; ++i) {
+        for (size_t i = 0; i < details::get_ids(x).size() and i < FCPP_FIELD_DRAW_LIMIT and s.size() < 10*FCPP_FIELD_DRAW_LIMIT; ++i) if (details::get_vals(x)[i+1] != details::get_vals(x)[0]) {
             s += to_string(details::get_ids(x)[i]);
             s.push_back(':');
-            s += to_string(common::escape(details::get_vals(x)[i+1]));
+            s += to_string(common::escape(const_ref(details::get_vals(x)[i+1])));
             if (i+1 == details::get_ids(x).size() or (i < FCPP_FIELD_DRAW_LIMIT-1 and s.size() < 10*FCPP_FIELD_DRAW_LIMIT-2)) s.push_back(',');
             else for (int j=0; j<3; ++j) s.push_back('.');
             s.push_back(' ');
         }
         s.push_back('*');
         s.push_back(':');
-        s += to_string(common::escape(details::get_vals(x)[0]));
+        s += to_string(common::escape(const_ref(details::get_vals(x)[0])));
         s.push_back('}');
         return s;
     }

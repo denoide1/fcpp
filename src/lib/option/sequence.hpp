@@ -76,9 +76,9 @@ struct never {
 //! @{
 /**
  * @brief With parameters as distributions (general form).
- * @param N The number of events (as distribution).
- * @param E The time of the events (as distribution).
- * @param contemporary Whether independent or contemporary events should be produced (defaults to true).
+ * @tparam N The number of events (as distribution).
+ * @tparam E The time of the events (as distribution).
+ * @tparam contemporary Whether independent or contemporary events should be produced (defaults to true).
  */
 template <typename N, typename E, bool contemporary = true>
 class multiple;
@@ -180,16 +180,16 @@ class multiple<N, E, false> {
 };
 /**
  * @brief With parameters as numeric template parameters.
- * @param n The number of events.
- * @param t The (integral) time of the events.
- * @param scale A scale factor by which the times are divided.
+ * @tparam n The number of events.
+ * @tparam t The (integral) time of the events.
+ * @tparam scale A scale factor by which the times are divided.
  */
 template <size_t n, intmax_t t, intmax_t scale = 1>
 using multiple_n = multiple<distribution::constant_n<size_t, n>, distribution::constant_n<times_t, t, scale>>;
 /**
  * @brief With parameters as initialisation values.
- * @param n_tag The tag corresponding to number of events in initialisation values.
- * @param t_tag The tag corresponding to the time of events in initialisation values.
+ * @tparam n_tag The tag corresponding to number of events in initialisation values.
+ * @tparam t_tag The tag corresponding to the time of events in initialisation values.
  */
 template <typename n_tag, typename t_tag>
 using multiple_i = multiple<distribution::constant_i<size_t, n_tag>, distribution::constant_i<times_t, t_tag>>;
@@ -200,11 +200,11 @@ using multiple_i = multiple<distribution::constant_i<size_t, n_tag>, distributio
 //! @{
 /**
  * @brief With times as distributions.
- * @param Ds The times of the events (as distributions).
+ * @tparam Ds The times of the events (as distributions).
  */
 template <typename... Ds>
 class list {
-    static_assert(common::all_true<std::is_same<typename Ds::type, times_t>::value...>, "the distributions Ds must generate a times_t value");
+    static_assert(common::number_all_true<std::is_same<typename Ds::type, times_t>::value...>, "the distributions Ds must generate a times_t value");
 
   public:
     //! @brief The type of results generated.
@@ -249,14 +249,14 @@ class list {
 };
 /**
  * @brief With times as numeric template parameters.
- * @param scale A scale factor by which the times are divided.
- * @param x     The (integral) times of the events.
+ * @tparam scale A scale factor by which the times are divided.
+ * @tparam x     The (integral) times of the events.
  */
 template <intmax_t scale, intmax_t... x>
 using list_n = list<distribution::constant_n<times_t,x,scale>...>;
 /**
  * @brief With times as initialisation values.
- * @param x_tag The tags corresponding to times in initialisation values.
+ * @tparam x_tag The tags corresponding to times in initialisation values.
  */
 template <typename... x_tag>
 using list_i = list<distribution::constant_i<times_t,x_tag>...>;
@@ -267,10 +267,10 @@ using list_i = list<distribution::constant_i<times_t,x_tag>...>;
 //! @{
 /**
  * @brief With parameters as distributions.
- * @param S The first event (as distribution).
- * @param P The period (as distribution).
- * @param E The maximum admissible time (as distribution).
- * @param N The maximum number of events (as distribution).
+ * @tparam S The first event (as distribution).
+ * @tparam P The period (as distribution).
+ * @tparam E The maximum admissible time (as distribution).
+ * @tparam N The maximum number of events (as distribution).
  */
 template <typename S, typename P = S, typename E = never, typename N = distribution::constant_n<size_t, -1>>
 class periodic {
@@ -328,11 +328,11 @@ class periodic {
 };
 /**
  * @brief With parameters as numeric template parameters.
- * @param scale A scale factor by which the `s`, `p` and `e` parameters are divided.
- * @param s The (integral) first event.
- * @param p The (integral) period.
- * @param e The (integral) maximum admissible time.
- * @param n The maximum number of events.
+ * @tparam scale A scale factor by which the `s`, `p` and `e` parameters are divided.
+ * @tparam s The (integral) first event.
+ * @tparam p The (integral) period.
+ * @tparam e The (integral) maximum admissible time.
+ * @tparam n The maximum number of events.
  */
 template <intmax_t scale, intmax_t s, intmax_t p = s, intmax_t e = std::numeric_limits<intmax_t>::max(), intmax_t n = -1>
 using periodic_n = periodic<
@@ -343,10 +343,10 @@ using periodic_n = periodic<
 >;
 /**
  * @brief With parameters as initialisation values.
- * @param s_tag The tag corresponding to the first event in initialisation values.
- * @param p_tag The tag corresponding to the period in initialisation values.
- * @param e_tag The tag corresponding to the maximum admissible time in initialisation values.
- * @param n_tag The tag corresponding to the maximum number of events in initialisation values.
+ * @tparam s_tag The tag corresponding to the first event in initialisation values.
+ * @tparam p_tag The tag corresponding to the period in initialisation values.
+ * @tparam e_tag The tag corresponding to the maximum admissible time in initialisation values.
+ * @tparam n_tag The tag corresponding to the maximum number of events in initialisation values.
  */
 template <typename s_tag, typename p_tag = s_tag, typename e_tag = void, typename n_tag = void>
 using periodic_i = periodic<
@@ -358,27 +358,13 @@ using periodic_i = periodic<
 //! @}
 
 
-//! @cond INTERNAL
-namespace details {
-    template <typename T, typename U>
-    U&& arg_expander(U&& x) {
-        return std::forward<U>(x);
-    }
-
-    // Helper function ignoring its arguments.
-    template <class... Ts>
-    void ignore(Ts const&...) {}
-}
-//! @endcond
-
-
 /**
  * @brief Merges multiple sequences in a single one.
- * @param Ss Generators of event sequences.
+ * @tparam Ss Generators of event sequences.
  */
 template <typename... Ss>
 class merge {
-    static_assert(common::all_true<std::is_same<typename Ss::type, times_t>::value...>, "the generators Ss must generate a times_t value");
+    static_assert(common::number_all_true<std::is_same<typename Ss::type, times_t>::value...>, "the generators Ss must generate a times_t value");
 
   public:
     //! @brief The type of results generated.
@@ -389,7 +375,7 @@ class merge {
 
     //! @brief Tagged tuple constructor.
     template <typename G, typename S, typename T>
-    merge(G&& g, common::tagged_tuple<S,T> const& tup) : m_generators{{details::arg_expander<Ss>(g),tup}...} {
+    merge(G&& g, common::tagged_tuple<S,T> const& tup) : m_generators{{common::type_pack_wrapper<Ss>(g),tup}...} {
         fill_queue(std::make_index_sequence<size>{});
     }
 
@@ -429,7 +415,7 @@ class merge {
     //! @brief Initially fills up the queue.
     template <size_t... is>
     inline void fill_queue(std::index_sequence<is...>) {
-        details::ignore((m_queue.emplace(std::get<is>(m_generators).next(), is),0)...);
+        common::ignore_args((m_queue.emplace(std::get<is>(m_generators).next(), is),0)...);
     }
 
     //! @brief Steps over a given sub-sequence.
@@ -587,7 +573,7 @@ namespace details {
  * The first two-thirds of `Ds::type` must be convertible to `real_t`.
  * The last third must be convertible to `size_t`.
  *
- * @param Ds The extremes and numerosities (as distributions).
+ * @tparam Ds The extremes and numerosities (as distributions).
  */
 template <typename... Ds>
 using grid = details::grid<
@@ -597,14 +583,14 @@ using grid = details::grid<
 >;
 /**
  * @brief With extremes and numerosities as numeric template parameters.
- * @param scale A scale factor by which the extremes are divided.
- * @param x The (integral) extremes.
+ * @tparam scale A scale factor by which the extremes are divided.
+ * @tparam x The (integral) extremes.
  */
 template <intmax_t scale, intmax_t... x>
 using grid_n = details::grid_n_splitter<scale, details::num_wrap<x>...>;
 /**
  * @brief With extremes and numerosities as initialisation values.
- * @param x_tag The tags corresponding to extremes and numerosities in initialisation values.
+ * @tparam x_tag The tags corresponding to extremes and numerosities in initialisation values.
  */
 template <typename... x_tag>
 using grid_i = typename details::grid_i<
@@ -670,9 +656,9 @@ namespace details {
  * `C::type` and `R::type` must either be both `vec<3>`, or `vec<2>` and `vec<1>` respectively.
  * `N::type` must be convertible to `size_t`.
  *
- * @param C The center (as distribution).
- * @param R The radius (as distribution).
- * @param N The numerosity (as distribution).
+ * @tparam C The center (as distribution).
+ * @tparam R The radius (as distribution).
+ * @tparam N The numerosity (as distribution).
  */
 template <typename C, typename R, typename N>
 class circle {
@@ -732,8 +718,8 @@ class circle {
 /**
  * @brief With center, radius and numerosity as numeric template parameters.
  *
- * @param scale A scale factor by which the coordinates are divided.
- * @param xs The (integral) center, radius and numerosity.
+ * @tparam scale A scale factor by which the coordinates are divided.
+ * @tparam xs The (integral) center, radius and numerosity.
  */
 template <intmax_t scale, intmax_t... xs>
 struct circle_n;
@@ -751,10 +737,10 @@ struct circle_n<scale, cx, cy, cz, rx, ry, rz, num> : public circle<distribution
 /**
  * @brief With center, radius and numerosity as initialisation values.
  *
- * @param c_tag The center tag.
- * @param r_tag The radius tag.
- * @param n_tag The numerosity tag.
- * @param n     The dimensionality.
+ * @tparam c_tag The center tag.
+ * @tparam r_tag The radius tag.
+ * @tparam n_tag The numerosity tag.
+ * @tparam n     The dimensionality.
  */
 template <typename c_tag, typename r_tag, typename n_tag, intmax_t n>
 struct circle_i;
